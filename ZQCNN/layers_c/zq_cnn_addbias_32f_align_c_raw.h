@@ -1,18 +1,18 @@
 #define op_0_4 \
 	a0 = zq_mm_load_ps(c_ptr);\
 	a1 = zq_mm_load_ps(c_ptr+zq_mm_align_size);\
-	a2 = zq_mm_load_ps(c_ptr+zq_mm_align_size_mul_2);\
-	a3 = zq_mm_load_ps(c_ptr+zq_mm_align_size_mul_3);\
+	a2 = zq_mm_load_ps(c_ptr+zq_mm_align_size2);\
+	a3 = zq_mm_load_ps(c_ptr+zq_mm_align_size3);\
 	b0 = zq_mm_load_ps(bias_ptr);\
 	b1 = zq_mm_load_ps(bias_ptr+zq_mm_align_size);\
-	b2 = zq_mm_load_ps(bias_ptr+zq_mm_align_size_mul_2);\
-	b3 = zq_mm_load_ps(bias_ptr+zq_mm_align_size_mul_3);\
+	b2 = zq_mm_load_ps(bias_ptr+zq_mm_align_size2);\
+	b3 = zq_mm_load_ps(bias_ptr+zq_mm_align_size3);\
 	zq_mm_store_ps(c_ptr, zq_mm_add_ps(a0,b0));\
 	zq_mm_store_ps(c_ptr+zq_mm_align_size, zq_mm_add_ps(a1,b1));\
-	zq_mm_store_ps(c_ptr+zq_mm_align_size_mul_2, zq_mm_add_ps(a2,b2));\
-	zq_mm_store_ps(c_ptr+zq_mm_align_size_mul_3, zq_mm_add_ps(a3,b3));\
-	c_ptr += zq_mm_align_size_mul_4;\
-	bias_ptr += zq_mm_align_size_mul_4
+	zq_mm_store_ps(c_ptr+zq_mm_align_size2, zq_mm_add_ps(a2,b2));\
+	zq_mm_store_ps(c_ptr+zq_mm_align_size3, zq_mm_add_ps(a3,b3));\
+	c_ptr += zq_mm_align_size4;\
+	bias_ptr += zq_mm_align_size4
 
 #define op_0_8 \
 	op_0_4;\
@@ -31,7 +31,7 @@
 	op_0_32
 
 void zq_cnn_addbias_32f_align(
-	float* in_tensor4D_data,	// in & out
+	zq_base_type* in_tensor4D_data,	// in & out
 	int in_N,
 	int in_H,
 	int in_W,
@@ -39,19 +39,19 @@ void zq_cnn_addbias_32f_align(
 	int in_pixelStep,
 	int in_widthStep,
 	int in_sliceStep,
-	const float* bias_data
+	const zq_base_type* bias_data
 )
 {
 	//zq_mm_type bias_v;
 	int n, h, w, c;
-	float* slice_ptr, *row_ptr, *pix_ptr, *c_ptr;
-	const float* bias_ptr;
+	zq_base_type* slice_ptr, *row_ptr, *pix_ptr, *c_ptr;
+	const zq_base_type* bias_ptr;
 	register zq_mm_type a0, a1, a2, a3;
 	register zq_mm_type b0, b1, b2, b3;
 
 #if 1
-
-	if (in_C%zq_mm_align_size_mul_32 == 0)
+#if !__ARM_NEON
+	if (in_C%zq_mm_align_size32 == 0)
 	{
 		for (n = 0, slice_ptr = in_tensor4D_data; n < in_N; n++, slice_ptr += in_sliceStep)
 		{
@@ -59,7 +59,7 @@ void zq_cnn_addbias_32f_align(
 			{
 				for (w = 0, pix_ptr = row_ptr; w < in_W; w++, pix_ptr += in_pixelStep)
 				{
-					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size_mul_32)
+					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size32)
 					{
 						op_0_32;
 					}
@@ -67,7 +67,7 @@ void zq_cnn_addbias_32f_align(
 			}
 		}
 	}
-	else if (in_C%zq_mm_align_size_mul_16 == 0)
+	else if (in_C%zq_mm_align_size16 == 0)
 	{
 		for (n = 0, slice_ptr = in_tensor4D_data; n < in_N; n++, slice_ptr += in_sliceStep)
 		{
@@ -75,7 +75,7 @@ void zq_cnn_addbias_32f_align(
 			{
 				for (w = 0, pix_ptr = row_ptr; w < in_W; w++, pix_ptr += in_pixelStep)
 				{
-					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size_mul_16)
+					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size16)
 					{
 						op_0_16;
 					}
@@ -83,7 +83,9 @@ void zq_cnn_addbias_32f_align(
 			}
 		}
 	}
-	else if (in_C%zq_mm_align_size_mul_8 == 0)
+	else
+#endif
+		if (in_C%zq_mm_align_size8 == 0)
 	{
 		for (n = 0, slice_ptr = in_tensor4D_data; n < in_N; n++, slice_ptr += in_sliceStep)
 		{
@@ -91,7 +93,7 @@ void zq_cnn_addbias_32f_align(
 			{
 				for (w = 0, pix_ptr = row_ptr; w < in_W; w++, pix_ptr += in_pixelStep)
 				{
-					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size_mul_8)
+					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size8)
 					{
 						op_0_8;
 					}
@@ -99,7 +101,7 @@ void zq_cnn_addbias_32f_align(
 			}
 		}
 	}
-	else if (in_C%zq_mm_align_size_mul_4 == 0)
+	else if (in_C%zq_mm_align_size4 == 0)
 	{
 		for (n = 0, slice_ptr = in_tensor4D_data; n < in_N; n++, slice_ptr += in_sliceStep)
 		{
@@ -107,7 +109,7 @@ void zq_cnn_addbias_32f_align(
 			{
 				for (w = 0, pix_ptr = row_ptr; w < in_W; w++, pix_ptr += in_pixelStep)
 				{
-					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size_mul_8)
+					for (c = 0, c_ptr = pix_ptr, bias_ptr = bias_data; c < in_C; c += zq_mm_align_size4)
 					{
 						op_0_4;
 					}

@@ -28,6 +28,9 @@ namespace ZQ
 			special_handle_very_big_face = false;
 			force_run_pnet_multithread = false;
 			show_debug_info = false;
+			limit_r_num = 0;
+			limit_o_num = 0;
+			limit_l_num = 0;
 		}
 		~ZQ_CNN_MTCNN()
 		{
@@ -35,6 +38,11 @@ namespace ZQ
 		}
 
 	private:
+#if __ARM_NEON
+		const int BATCH_SIZE = 16;
+#else
+		const int BATCH_SIZE = 64;
+#endif
 		std::vector<ZQ_CNN_Net> pnet, rnet, onet, lnet;
 		bool has_lnet;
 		int thread_num;
@@ -55,11 +63,21 @@ namespace ZQ
 		bool force_run_pnet_multithread;
 		std::vector<float> scales;
 		std::vector<ZQ_CNN_Tensor4D_NHW_C_Align128bit> pnet_images;
-		ZQ_CNN_Tensor4D_NHW_C_Align128bit input, rnet_image, onet_image;
+		ZQ_CNN_Tensor4D_NHW_C_Align128bit ori_input, rnet_image, onet_image;
 		bool show_debug_info;
+		int limit_r_num;
+		int limit_o_num;
+		int limit_l_num;
 	public:
 		void TurnOnShowDebugInfo() { show_debug_info = true; }
 		void TurnOffShowDebugInfo() { show_debug_info = false; }
+		void SetLimit(int limit_r = 0, int limit_o = 0, int limit_l = 0) 
+		{
+			limit_r_num = limit_r;
+			limit_o_num = limit_o;
+			limit_l_num = limit_l;
+		}
+
 		bool Init(const string& pnet_param, const string& pnet_model, const string& rnet_param, const string& rnet_model,
 			const string& onet_param, const string& onet_model, int thread_num = 1, 
 			bool has_lnet = false, const string& lnet_param = "", const std::string& lnet_model = "")
@@ -80,9 +98,11 @@ namespace ZQ
 			bool ret = true;
 			for (int i = 0; i < thread_num; i++)
 			{
-				ret = pnet[i].LoadFrom(pnet_param, pnet_model) && rnet[i].LoadFrom(rnet_param, rnet_model) && onet[i].LoadFrom(onet_param, onet_model);
+				ret = pnet[i].LoadFrom(pnet_param, pnet_model,true,1e-9, true) 
+					&& rnet[i].LoadFrom(rnet_param, rnet_model, true, 1e-9, true)
+					&& onet[i].LoadFrom(onet_param, onet_model, true, 1e-9, true);
 				if (has_lnet && ret)
-					ret = lnet[i].LoadFrom(lnet_param, lnet_model);
+					ret = lnet[i].LoadFrom(lnet_param, lnet_model, true, 1e-9, true);
 				if (!ret)
 					break;
 			}
@@ -99,10 +119,10 @@ namespace ZQ
 				this->thread_num = thread_num;
 			if (show_debug_info)
 			{
-				printf("rnet = %.1f M, onet = %.1f M\n", rnet[0].GetNumOfMulAdd() / (1024.0*1024.0),
+				printf("rnet = %.2f M, onet = %.2f M\n", rnet[0].GetNumOfMulAdd() / (1024.0*1024.0),
 					onet[0].GetNumOfMulAdd() / (1024.0*1024.0));
 				if (has_lnet)
-					printf("lnet = %.1f M\n", lnet[0].GetNumOfMulAdd() / (1024.0*1024.0));
+					printf("lnet = %.2f M\n", lnet[0].GetNumOfMulAdd() / (1024.0*1024.0));
 			}
 			int C, H, W;
 			rnet[0].GetInputDim(C, H, W);
@@ -138,11 +158,11 @@ namespace ZQ
 			bool ret = true;
 			for (int i = 0; i < thread_num; i++)
 			{
-				ret = pnet[i].LoadFromBuffer(pnet_param, pnet_param_len,pnet_model,pnet_model_len) 
-					&& rnet[i].LoadFromBuffer(rnet_param, rnet_param_len, rnet_model, rnet_model_len) 
-					&& onet[i].LoadFromBuffer(onet_param, onet_param_len, onet_model, onet_model_len);
+				ret = pnet[i].LoadFromBuffer(pnet_param, pnet_param_len,pnet_model,pnet_model_len, true, 1e-9, true)
+					&& rnet[i].LoadFromBuffer(rnet_param, rnet_param_len, rnet_model, rnet_model_len, true, 1e-9, true)
+					&& onet[i].LoadFromBuffer(onet_param, onet_param_len, onet_model, onet_model_len, true, 1e-9, true);
 				if (has_lnet && ret)
-					ret = lnet[i].LoadFromBuffer(lnet_param, lnet_param_len, lnet_model, lnet_model_len);
+					ret = lnet[i].LoadFromBuffer(lnet_param, lnet_param_len, lnet_model, lnet_model_len, true, 1e-9, true);
 				if (!ret)
 					break;
 			}
@@ -248,27 +268,65 @@ namespace ZQ
 		bool Find(const unsigned char* bgr_img, int _width, int _height, int _widthStep, std::vector<ZQ_CNN_BBox>& results)
 		{
 			double t1 = omp_get_wtime();
+
+			if (width != _width || height != _height)
+				return false;
+			if (!ori_input.ConvertFromBGR(bgr_img, width, height, _widthStep))
+				return false;
+			double t2 = omp_get_wtime();
+			if (show_debug_info)
+				printf("convert cost: %.3f ms\n", 1000 * (t2 - t1));
+			return Find(ori_input, results);
+		}
+
+		bool Find106(const unsigned char* bgr_img, int _width, int _height, int _widthStep, std::vector<ZQ_CNN_BBox106>& results)
+		{
+			double t1 = omp_get_wtime();
+
+			if (width != _width || height != _height)
+				return false;
+			if (!ori_input.ConvertFromBGR(bgr_img, width, height, _widthStep))
+				return false;
+			double t2 = omp_get_wtime();
+			if (show_debug_info)
+				printf("convert cost: %.3f ms\n", 1000 * (t2 - t1));
+			return Find106(ori_input, results);
+		}
+
+		bool Find(ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<ZQ_CNN_BBox>& results)
+		{
+			double t1 = omp_get_wtime();
 			std::vector<ZQ_CNN_BBox> firstBbox, secondBbox, thirdBbox;
-			if (!_Pnet_stage(bgr_img, _width, _height, _widthStep, firstBbox))
+			if (!_Pnet_stage(input, firstBbox))
 				return false;
 			//results = firstBbox;
 			//return true;
+			if (limit_r_num > 0)
+			{
+				_select(firstBbox, limit_r_num, input.GetW(), input.GetH());
+			}
+
 			double t2 = omp_get_wtime();
-			if (!_Rnet_stage(firstBbox, secondBbox))
+			if (!_Rnet_stage(input, firstBbox, secondBbox))
 				return false;
 			//results = secondBbox;
 			//return true;
 
+			if (limit_o_num > 0)
+			{
+				_select(secondBbox, limit_o_num, input.GetW(), input.GetH());
+			}
+
 			if (!has_lnet || !do_landmark)
 			{
 				double t3 = omp_get_wtime();
-				if (!_Onet_stage(secondBbox, results))
+				if (!_Onet_stage(input, secondBbox, results))
 					return false;
 
 				double t4 = omp_get_wtime();
 				if (show_debug_info)
 				{
-					printf("final found num: %d\n", results.size());
+					printf("final found num: %d\n", (int)results.size());
 					printf("total cost: %.3f ms (P: %.3f ms, R: %.3f ms, O: %.3f ms)\n",
 						1000 * (t4 - t1), 1000 * (t2 - t1), 1000 * (t3 - t2), 1000 * (t4 - t3));
 				}
@@ -276,18 +334,23 @@ namespace ZQ
 			else
 			{
 				double t3 = omp_get_wtime();
-				if (!_Onet_stage(secondBbox, thirdBbox))
+				if (!_Onet_stage(input, secondBbox, thirdBbox))
 					return false;
+
+				if (limit_l_num > 0)
+				{
+					_select(thirdBbox, limit_l_num, input.GetW(), input.GetH());
+				}
 
 				double t4 = omp_get_wtime();
 
-				if (!_Lnet_stage(thirdBbox, results))
+				if (!_Lnet_stage(input, thirdBbox, results))
 					return false;
 
 				double t5 = omp_get_wtime();
 				if (show_debug_info)
 				{
-					printf("final found num: %d\n", results.size());
+					printf("final found num: %d\n", (int)results.size());
 					printf("total cost: %.3f ms (P: %.3f ms, R: %.3f ms, O: %.3f ms, L: %.3f ms)\n",
 						1000 * (t5 - t1), 1000 * (t2 - t1), 1000 * (t3 - t2), 1000 * (t4 - t3), 1000 * (t5 - t4));
 				}
@@ -296,37 +359,48 @@ namespace ZQ
 			return true;
 		}
 
-		bool Find106(const unsigned char* bgr_img, int _width, int _height, int _widthStep, std::vector<ZQ_CNN_BBox106>& results)
+		bool Find106(ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<ZQ_CNN_BBox106>& results)
 		{
 			double t1 = omp_get_wtime();
 			std::vector<ZQ_CNN_BBox> firstBbox, secondBbox, thirdBbox;
-			if (!_Pnet_stage(bgr_img, _width, _height, _widthStep, firstBbox))
+			if (!_Pnet_stage(input, firstBbox))
 				return false;
 			//results = firstBbox;
 			//return true;
+			if (limit_r_num > 0)
+			{
+				_select(firstBbox, limit_r_num, input.GetW(), input.GetH());
+			}
 			double t2 = omp_get_wtime();
-			if (!_Rnet_stage(firstBbox, secondBbox))
+			if (!_Rnet_stage(input, firstBbox, secondBbox))
 				return false;
 			//results = secondBbox;
 			//return true;
-
+			if (limit_o_num > 0)
+			{
+				_select(secondBbox, limit_o_num, input.GetW(), input.GetH());
+			}
 			if (!has_lnet || !do_landmark)
 			{
 				return false;
 			}
 			double t3 = omp_get_wtime();
-			if (!_Onet_stage(secondBbox, thirdBbox))
+			if (!_Onet_stage(input, secondBbox, thirdBbox))
 				return false;
 
+			if (limit_l_num > 0)
+			{
+				_select(thirdBbox, limit_l_num, input.GetW(), input.GetH());
+			}
 			double t4 = omp_get_wtime();
 
-			if (!_Lnet106_stage(thirdBbox, results))
+			if (!_Lnet106_stage(input, thirdBbox, results))
 				return false;
 
 			double t5 = omp_get_wtime();
 			if (show_debug_info)
 			{
-				printf("final found num: %d\n", results.size());
+				printf("final found num: %d\n", (int)results.size());
 				printf("total cost: %.3f ms (P: %.3f ms, R: %.3f ms, O: %.3f ms, L: %.3f ms)\n",
 					1000 * (t5 - t1), 1000 * (t2 - t1), 1000 * (t3 - t2), 1000 * (t4 - t3), 1000 * (t5 - t4));
 			}
@@ -335,7 +409,7 @@ namespace ZQ
 		}
 
 	private:
-		void _compute_Pnet_single_thread(std::vector<std::vector<float> >& maps, 
+		void _compute_Pnet_single_thread(ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<std::vector<float> >& maps, 
 			std::vector<int>& mapH, std::vector<int>& mapW)
 		{
 			int scale_num = 0;
@@ -393,7 +467,7 @@ namespace ZQ
 				}
 			}
 		}
-		void _compute_Pnet_multi_thread(std::vector<std::vector<float> >& maps,
+		void _compute_Pnet_multi_thread(ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<std::vector<float> >& maps,
 			std::vector<int>& mapH, std::vector<int>& mapW)
 		{
 			if (thread_num <= 1)
@@ -412,7 +486,7 @@ namespace ZQ
 			}
 			else
 			{
-#pragma omp parallel for num_threads(thread_num)
+#pragma omp parallel for num_threads(thread_num) schedule(dynamic, 1)
 				for (int i = 0; i < scales.size(); i++)
 				{
 					int changedH = (int)ceil(height*scales[i]);
@@ -607,21 +681,13 @@ namespace ZQ
 			}
 		}
 
-		bool _Pnet_stage(const unsigned char* bgr_img, int _width, int _height, int _widthStep, std::vector<ZQ_CNN_BBox>& firstBbox)
+		bool _Pnet_stage(ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<ZQ_CNN_BBox>& firstBbox)
 		{
 			if (thread_num <= 0)
 				return false;
 
 			double t1 = omp_get_wtime();
 			firstBbox.clear();
-			if (width != _width || height != _height)
-				return false;
-			if (!input.ConvertFromBGR(bgr_img, width, height, width * 3))
-				return false;
-			double t2 = omp_get_wtime();
-			if (show_debug_info)
-				printf("convert cost: %.3f ms\n", 1000 * (t2 - t1));
-
 			std::vector<std::vector<float> > maps;
 			std::vector<int> mapH;
 			std::vector<int> mapW;
@@ -629,11 +695,11 @@ namespace ZQ
 			{
 				pnet[0].TurnOffShowDebugInfo();
 				//pnet[0].TurnOnShowDebugInfo();
-				_compute_Pnet_single_thread(maps, mapH, mapW);
+				_compute_Pnet_single_thread(input, maps, mapH, mapW);
 			}
 			else
 			{
-				_compute_Pnet_multi_thread(maps, mapH, mapW);
+				_compute_Pnet_multi_thread(input, maps, mapH, mapW);
 			}
 			ZQ_CNN_OrderScore order;
 			std::vector<std::vector<ZQ_CNN_BBox> > bounding_boxes(scales.size());
@@ -726,7 +792,7 @@ namespace ZQ
 							block_end_h[bb] = (bh == block_num - 1) ? scoreH : ((bh + 1)*height_per_block);
 						}
 					}
-					int chunk_size = ceil((float)block_num / thread_num);
+					int chunk_size = 1;// ceil((float)block_num / thread_num);
 					if (thread_num <= 1)
 					{
 						for (int bb = 0; bb < block_num; bb++)
@@ -768,7 +834,7 @@ namespace ZQ
 					}
 					else
 					{
-#pragma omp parallel for schedule(static, chunk_size) num_threads(thread_num)
+#pragma omp parallel for schedule(dynamic, chunk_size) num_threads(thread_num)
 						for (int bb = 0; bb < block_num; bb++)
 						{
 							ZQ_CNN_BBox bbox;
@@ -873,11 +939,11 @@ namespace ZQ
 				printf("first stage candidate count: %d\n", count);
 			double t3 = omp_get_wtime();
 			if (show_debug_info)
-				printf("stage 1: cost %.3f ms\n", 1000 * (t3 - t2));
+				printf("stage 1: cost %.3f ms\n", 1000 * (t3 - t1));
 			return true;
 		}
 
-		bool _Rnet_stage(std::vector<ZQ_CNN_BBox>& firstBbox, std::vector<ZQ_CNN_BBox>& secondBbox)
+		bool _Rnet_stage(const ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<ZQ_CNN_BBox>& firstBbox, std::vector<ZQ_CNN_BBox>& secondBbox)
 		{
 			double t3 = omp_get_wtime();
 			secondBbox.clear();
@@ -910,7 +976,7 @@ namespace ZQ
 				}
 			}
 
-			int batch_size = 64;
+			int batch_size = BATCH_SIZE;
 			int per_num = ceil((float)r_count / thread_num);
 			int need_thread_num = thread_num;
 			if (per_num > batch_size)
@@ -1077,7 +1143,7 @@ namespace ZQ
 			return true;
 		}
 
-		bool _Onet_stage(std::vector<ZQ_CNN_BBox>& secondBbox, std::vector<ZQ_CNN_BBox>& thirdBbox)
+		bool _Onet_stage(const ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<ZQ_CNN_BBox>& secondBbox, std::vector<ZQ_CNN_BBox>& thirdBbox)
 		{
 			double t4 = omp_get_wtime();
 			thirdBbox.clear();
@@ -1118,7 +1184,7 @@ namespace ZQ
 				}
 			}
 
-			int batch_size = 64;
+			int batch_size = BATCH_SIZE;
 			int per_num = ceil((float)o_count / thread_num);
 			int need_thread_num = thread_num;
 			if (per_num > batch_size)
@@ -1161,7 +1227,7 @@ namespace ZQ
 			{
 				for (int pp = 0; pp < need_thread_num; pp++)
 				{
-					if (task_src_off_x.size() == 0)
+					if (task_src_off_x.size() == 0 || task_src_off_x[pp].size() == 0)
 						continue;
 					if (!input.ResizeBilinearRect(task_onet_images[pp], onet_size, onet_size, 0, 0,
 						task_src_off_x[pp], task_src_off_y[pp], task_src_rect_w[pp], task_src_rect_h[pp]))
@@ -1230,7 +1296,7 @@ namespace ZQ
 				for (int pp = 0; pp < need_thread_num; pp++)
 				{
 					int thread_id = omp_get_thread_num();
-					if (task_src_off_x.size() == 0)
+					if (task_src_off_x.size() == 0 || task_src_off_x[pp].size() == 0)
 						continue;
 					if (!input.ResizeBilinearRect(task_onet_images[pp], onet_size, onet_size, 0, 0,
 						task_src_off_x[pp], task_src_off_y[pp], task_src_rect_w[pp], task_src_rect_h[pp]))
@@ -1312,6 +1378,9 @@ namespace ZQ
 					id++;
 				}
 			}
+
+			ZQ_CNN_BBoxUtils::_refine_and_square_bbox(thirdBbox, width, height, false);
+
 			ZQ_CNN_OrderScore order;
 			for (int i = 0; i < early_accept_thirdBbox.size(); i++)
 			{
@@ -1320,7 +1389,7 @@ namespace ZQ
 				thirdScore.push_back(order);
 				thirdBbox.push_back(early_accept_thirdBbox[i]);
 			}
-			ZQ_CNN_BBoxUtils::_refine_and_square_bbox(thirdBbox, width, height, false);
+			
 			ZQ_CNN_BBoxUtils::_nms(thirdBbox, thirdScore, nms_thresh[2], "Min");
 			double t5 = omp_get_wtime();
 			if (show_debug_info)
@@ -1332,7 +1401,7 @@ namespace ZQ
 		}
 
 
-		bool _Lnet_stage(std::vector<ZQ_CNN_BBox>& thirdBbox, std::vector<ZQ_CNN_BBox>& fourthBbox)
+		bool _Lnet_stage(const ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<ZQ_CNN_BBox>& thirdBbox, std::vector<ZQ_CNN_BBox>& fourthBbox)
 		{
 			double t4 = omp_get_wtime();
 			fourthBbox.clear();
@@ -1373,7 +1442,7 @@ namespace ZQ
 				src_rect_h.push_back(rect_h);
 			}
 
-			int batch_size = 64;
+			int batch_size = BATCH_SIZE;
 			int per_num = ceil((float)l_count / thread_num);
 			int need_thread_num = thread_num;
 			if (per_num > batch_size)
@@ -1499,7 +1568,7 @@ namespace ZQ
 		}
 
 
-		bool _Lnet106_stage(std::vector<ZQ_CNN_BBox>& thirdBbox, std::vector<ZQ_CNN_BBox106>& resultBbox)
+		bool _Lnet106_stage(const ZQ_CNN_Tensor4D_NHW_C_Align128bit& input, std::vector<ZQ_CNN_BBox>& thirdBbox, std::vector<ZQ_CNN_BBox106>& resultBbox)
 		{
 			double t4 = omp_get_wtime();
 			std::vector<ZQ_CNN_BBox> fourthBbox;
@@ -1540,7 +1609,7 @@ namespace ZQ
 				src_rect_h.push_back(rect_h);
 			}
 
-			int batch_size = 64;
+			int batch_size = BATCH_SIZE;
 			int per_num = ceil((float)l_count / thread_num);
 			int need_thread_num = thread_num;
 			if (per_num > batch_size)
@@ -1681,6 +1750,14 @@ namespace ZQ
 				printf("stage 4: cost %.3f ms\n", 1000 * (t5 - t4));
 
 			return true;
+		}
+
+		void _select(std::vector<ZQ_CNN_BBox>& bbox, int limit_num, int width, int height)
+		{
+			int in_num = bbox.size();
+			if (limit_num >= in_num)
+				return;
+			bbox.resize(limit_num);
 		}
 	};
 }

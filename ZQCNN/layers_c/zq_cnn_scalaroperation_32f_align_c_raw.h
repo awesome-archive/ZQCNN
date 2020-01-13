@@ -63,8 +63,8 @@
 	op_0_32_inplace
 
 void zq_cnn_scalaroperation_32f_align(
-	float scalar,
-	const float* in_tensor4D_data,
+	zq_base_type scalar,
+	const zq_base_type* in_tensor4D_data,
 	int in_N,
 	int in_H,
 	int in_W,
@@ -72,7 +72,7 @@ void zq_cnn_scalaroperation_32f_align(
 	int in_pixelStep,
 	int in_widthStep,
 	int in_sliceStep,
-	float* out_tensor4D_data,
+	zq_base_type* out_tensor4D_data,
 	int out_pixelStep,
 	int out_widthStep,
 	int out_sliceStep
@@ -82,9 +82,9 @@ void zq_cnn_scalaroperation_32f_align(
 	register zq_mm_type a0, a1, a2, a3;
 	register zq_mm_type b0, b1, b2, b3;
 	int n, h, w, c;
-	const float* in_slice_ptr, *in_row_ptr, *in_pix_ptr, *in_c_ptr;
-	float* out_slice_ptr, *out_row_ptr, *out_pix_ptr, *out_c_ptr;
-	
+	const zq_base_type* in_slice_ptr, *in_row_ptr, *in_pix_ptr, *in_c_ptr;
+	zq_base_type* out_slice_ptr, *out_row_ptr, *out_pix_ptr, *out_c_ptr;
+#if !__ARM_NEON
 	if (in_C%zq_mm_align_size_mul_32 == 0)
 	{
 		for (n = 0, in_slice_ptr = in_tensor4D_data, out_slice_ptr = out_tensor4D_data; 
@@ -133,7 +133,9 @@ void zq_cnn_scalaroperation_32f_align(
 			}
 		}
 	}
-	else if (in_C%zq_mm_align_size_mul_8 == 0)
+	else
+#endif
+		if (in_C%zq_mm_align_size_mul_8 == 0)
 	{
 		for (n = 0, in_slice_ptr = in_tensor4D_data, out_slice_ptr = out_tensor4D_data;
 			n < in_N;
@@ -185,8 +187,8 @@ void zq_cnn_scalaroperation_32f_align(
 }
 
 void zq_cnn_scalaroperation_inplace_32f_align(
-	float scalar,
-	float* in_tensor4D_data,	
+	zq_base_type scalar,
+	zq_base_type* in_tensor4D_data,	
 	int in_N,
 	int in_H,
 	int in_W,
@@ -200,8 +202,8 @@ void zq_cnn_scalaroperation_inplace_32f_align(
 	register zq_mm_type a0, a1, a2, a3;
 	register zq_mm_type b0, b1, b2, b3;
 	int n, h, w, c;
-	float* slice_ptr, *row_ptr, *pix_ptr, *c_ptr;
-
+	zq_base_type* slice_ptr, *row_ptr, *pix_ptr, *c_ptr;
+#if !__ARM_NEON
 	if (in_C%zq_mm_align_size_mul_32 == 0)
 	{
 		for (n = 0, slice_ptr = in_tensor4D_data; n < in_N; n++, slice_ptr += in_sliceStep)
@@ -234,7 +236,9 @@ void zq_cnn_scalaroperation_inplace_32f_align(
 			}
 		}
 	}
-	else if (in_C%zq_mm_align_size_mul_8 == 0)
+	else
+#endif
+		if (in_C%zq_mm_align_size_mul_8 == 0)
 	{
 		for (n = 0, slice_ptr = in_tensor4D_data; n < in_N; n++, slice_ptr += in_sliceStep)
 		{

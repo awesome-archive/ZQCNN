@@ -5,6 +5,8 @@
 #include <malloc.h>
 #include <string.h>
 
+
+
 #define ZQ_CNN_SSETYPE_NONE 0
 #define ZQ_CNN_SSETYPE_SSE 1
 #define ZQ_CNN_SSETYPE_AVX 2
@@ -41,6 +43,32 @@
 #define ZQ_DECLSPEC_ALIGN32 __attribute__((aligned(32)))
 #define ZQ_DECLSPEC_ALIGN16 __attribute__((aligned(16)))
 
+#if defined(ZQ_CNN_USE_ARM_NEON)
+#define __ARM_NEON 1
+#else
+#define __ARM_NEON 0
+#endif
+
+#if defined(ZQ_CNN_USE_ARM_NEON_ARMV8)
+#define __ARM_NEON_ARMV8 1
+#else
+#define __ARM_NEON_ARMV8 0
+#endif
+
+#if defined(ZQ_CNN_USE_ARM_NEON_FP16)
+#define __ARM_NEON_FP16 1
+#else
+#define __ARM_NEON_FP16 0
+#endif
+
+#if __ARM_NEON
+//#define ZQ_CNN_USE_FMADD128 1
+#define ZQ_CNN_USE_SSETYPE ZQ_CNN_SSETYPE_NONE
+#if defined(ZQ_CNN_USE_BOTH_BLAS_ZQ_GEMM)
+#define ZQ_CNN_USE_ZQ_GEMM 1
+#define ZQ_CNN_USE_BLAS_GEMM 1
+#endif
+#else
 // your settings
 #define ZQ_CNN_USE_SSETYPE ZQ_CNN_SSETYPE_AVX
 #define ZQ_CNN_USE_BLAS_GEMM 0 // if you want to use openblas, set to 1
@@ -59,6 +87,8 @@
 #define ZQ_CNN_USE_FMADD128 0
 #define ZQ_CNN_USE_FMADD256 0 
 #endif
+
+#endif //__ARM_NEON
 
 #ifndef __int64 
 #define __int64 long long
@@ -85,5 +115,6 @@
 #endif
 
 #endif// defined(WIN32) || defined(_WINDOWS_)
+
 
 #endif// _ZQ_CNN_COMPILE_CONFIG_H_

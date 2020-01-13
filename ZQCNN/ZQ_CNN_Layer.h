@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include "ZQ_CNN_Defines.h"
 #include "ZQ_CNN_Tensor4D.h"
 #include "ZQ_CNN_BBoxUtils.h"
 #include "ZQ_CNN_Forward_SSEUtils.h"
@@ -21,8 +20,9 @@ namespace ZQ
 		bool use_buffer;
 		bool show_debug_info;
 		float ignore_small_value;
+		float last_cost_time;
 
-		ZQ_CNN_Layer() :show_debug_info(false),use_buffer(false),ignore_small_value(0) {}
+		ZQ_CNN_Layer() :show_debug_info(false),use_buffer(false),ignore_small_value(0),last_cost_time(0) {}
 		virtual ~ZQ_CNN_Layer() {}
 		virtual bool Forward(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops) = 0;
 
@@ -245,13 +245,17 @@ namespace ZQ
 	{
 	public:
 		ZQ_CNN_Layer_Convolution() :filters(0), bias(0), num_output(0), kernel_H(0), kernel_W(0),
-			stride_H(1), stride_W(1), dilate_H(1), dilate_W(1), pad_H(0), pad_W(), with_bias(false), bottom_C(0) {}
+			stride_H(1), stride_W(1), dilate_H(1), dilate_W(1), pad_type(TYPE_NONE),
+			pad_H_top(0), pad_H_bottom(0), pad_W_left(0), pad_W_right(0),
+			with_bias(false), with_prelu(false), prelu_slope(0), bottom_C(0) {}
 		~ZQ_CNN_Layer_Convolution() {
 			if (filters)delete filters;
 			if (bias)delete bias;
+			if (prelu_slope) delete prelu_slope;
 		}
 		ZQ_CNN_Tensor4D* filters;
 		ZQ_CNN_Tensor4D* bias;
+		ZQ_CNN_Tensor4D* prelu_slope;
 		int num_output;
 		int kernel_H;
 		int kernel_W;
@@ -259,9 +263,17 @@ namespace ZQ
 		int stride_W;
 		int dilate_H;
 		int dilate_W;
-		int pad_H;
-		int pad_W;
+
+		static const int TYPE_NONE = 0;
+		static const int TYPE_VALID = 1;
+		static const int TYPE_SAME = 2;
+		int pad_type;
+		int pad_H_top;
+		int pad_H_bottom;
+		int pad_W_left;
+		int pad_W_right;
 		bool with_bias;
+		bool with_prelu;
 
 		//
 		int bottom_C;
@@ -276,46 +288,101 @@ namespace ZQ
 				return false;
 			if (with_bias)
 			{
-				if (filters == 0 || bias == 0)
-					return false;
-				double t1 = omp_get_wtime();
-				void** tmp_buffer = use_buffer ? buffer : 0;
-				__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
-				bool ret = ZQ_CNN_Forward_SSEUtils::ConvolutionWithBias(*((*bottoms)[0]), 
-					*filters, *bias, stride_H, stride_W,dilate_H,dilate_W, pad_H, pad_W, *((*tops)[0]),
-					tmp_buffer, tmp_buffer_len);
-				double t2 = omp_get_wtime();
-				if (show_debug_info)
+				if (with_prelu)
 				{
-					double time = __max(1000 * (t2 - t1), 1e-9);
-					double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
-					mop /= 1024 * 1024;
-					printf("Conv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
-						name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
-						mop, mop / time);
+					if (filters == 0 || bias == 0 || prelu_slope == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::ConvolutionWithBiasPReLU(*((*bottoms)[0]),
+						*filters, *bias, *prelu_slope, stride_H, stride_W, dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("Conv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
 				}
-				return ret;
+				else
+				{
+					if (filters == 0 || bias == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::ConvolutionWithBias(*((*bottoms)[0]),
+						*filters, *bias, stride_H, stride_W, dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("Conv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
+				}
 			}
 			else
 			{
-				if (filters == 0)
-					return false;
-				double t1 = omp_get_wtime();
-				void** tmp_buffer = use_buffer ? buffer : 0;
-				__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
-				bool ret = ZQ_CNN_Forward_SSEUtils::Convolution(*((*bottoms)[0]), *filters, stride_H, stride_W, dilate_H, dilate_W, pad_H, pad_W, *((*tops)[0]),
-					 tmp_buffer, tmp_buffer_len);
-				double t2 = omp_get_wtime();
-				if (show_debug_info)
+				if (with_prelu)
 				{
-					double time = __max(1000 * (t2 - t1), 1e-9);
-					double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
-					mop /= 1024 * 1024;
-					printf("Conv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
-						name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
-						mop, mop / time);
+					if (filters == 0 || prelu_slope == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::ConvolutionWithPReLU(*((*bottoms)[0]), *filters, *prelu_slope, stride_H, stride_W, 
+						dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("Conv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
 				}
-				return ret;
+				else
+				{
+					if (filters == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::Convolution(*((*bottoms)[0]), *filters, stride_H, stride_W, dilate_H, dilate_W, 
+						pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("Conv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
+				}
 			}
 		}
 
@@ -391,26 +458,64 @@ namespace ZQ
 						dilate_W = atoi(paras[n][1].c_str());
 					}
 				}
+				else if (_my_strcmpi("pad_type", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						if (_my_strcmpi("SAME", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_SAME;
+						else if (_my_strcmpi("VALID", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_VALID;
+					}
+				}
 				else if (_my_strcmpi("pad", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
 					{
 						int pad_num = atoi(paras[n][1].c_str());
-						pad_H = pad_W = pad_num;
+						pad_H_top = pad_H_bottom = pad_W_left = pad_W_right = pad_num;
 					}
 				}
 				else if (_my_strcmpi("pad_H", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
 					{
-						pad_H = atoi(paras[n][1].c_str());
+						pad_H_top = pad_H_bottom = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_top = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_bottom = atoi(paras[n][1].c_str());
 					}
 				}
 				else if (_my_strcmpi("pad_W", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
 					{
-						pad_W = atoi(paras[n][1].c_str());
+						pad_W_left = pad_W_right = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_left", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_left = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_right", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_right = atoi(paras[n][1].c_str());
 					}
 				}
 				else if (_my_strcmpi("stride", paras[n][0].c_str()) == 0)
@@ -502,6 +607,7 @@ namespace ZQ
 			this->bottom_C = bottom_C;
 			this->bottom_H = bottom_H;
 			this->bottom_W = bottom_W;
+			
 			if (filters)
 			{
 				if (!filters->ChangeSize(num_output, kernel_H, kernel_W, bottom_C, 0, 0))
@@ -532,15 +638,42 @@ namespace ZQ
 						return false;
 				}
 			}
+
+			if (pad_type == TYPE_VALID)
+			{
+				int real_kernel_W = (kernel_W - 1)*dilate_W + 1;
+				int real_kernel_H = (kernel_H - 1)*dilate_H + 1;
+				int top_W = ceil((bottom_W - real_kernel_W + 1) / stride_W);
+				int top_H = ceil((bottom_H - real_kernel_H + 1) / stride_H);
+				int pad_W = __max((top_W - 1)*stride_W + real_kernel_W - bottom_W, 0);
+				int pad_H = __max((top_H - 1)*stride_H + real_kernel_H - bottom_H, 0);
+				pad_W_left = pad_W / 2;
+				pad_W_right = pad_W - pad_W_left;
+				pad_H_top = pad_H / 2;
+				pad_H_bottom = pad_H - pad_H_top;
+			}
+			else if (pad_type == TYPE_SAME)
+			{
+				int real_kernel_W = (kernel_W - 1)*dilate_W + 1;
+				int real_kernel_H = (kernel_H - 1)*dilate_H + 1;
+				int top_W = bottom_W / stride_W;
+				int top_H = bottom_H / stride_H;
+				int pad_W = __max((top_W - 1)*stride_W + real_kernel_W - bottom_W, 0);
+				int pad_H = __max((top_H - 1)*stride_H + real_kernel_H - bottom_H, 0);
+				pad_W_left = pad_W / 2;
+				pad_W_right = pad_W - pad_W_left;
+				pad_H_top = pad_H / 2;
+				pad_H_bottom = pad_H - pad_H_top;
+			}
 			return true;
 		}
 
 		//should called after SetBottomDim
 		virtual void GetTopDim(int& top_C, int& top_H, int& top_W) const 
 		{ 
-			top_C = num_output;  
-			top_H = __max(0, floor((float)(bottom_H + pad_H * 2 - (kernel_H-1)*dilate_H-1) / stride_H) + 1);
-			top_W = __max(0, floor((float)(bottom_W + pad_W * 2 - (kernel_W-1)*dilate_W-1) / stride_W) + 1);
+			top_C = num_output;
+			top_H = __max(0, floor((float)(bottom_H + pad_H_top + pad_H_bottom - (kernel_H - 1)*dilate_H - 1) / stride_H) + 1);
+			top_W = __max(0, floor((float)(bottom_W + pad_W_left + pad_W_right - (kernel_W - 1)*dilate_W - 1) / stride_W) + 1);
 		}
 
 		virtual bool SwapInputRGBandBGR()
@@ -687,7 +820,12 @@ namespace ZQ
 		{ 
 			int top_C, top_H, top_W;
 			GetTopDim(top_C, top_H, top_W);
-			return (__int64)top_H*top_W*filters->GetN()*filters->GetH()*filters->GetW()*filters->GetC();
+			__int64 total_num = (__int64)top_H*top_W*filters->GetN()*filters->GetH()*filters->GetW()*filters->GetC();
+			if (with_bias)
+				total_num += (__int64)top_H*top_W*top_C;
+			if(with_prelu)
+				total_num += (__int64)top_H*top_W*top_C*3;
+			return total_num;
 		}
 	};
 
@@ -696,13 +834,16 @@ namespace ZQ
 	{
 	public:
 		ZQ_CNN_Layer_DepthwiseConvolution() :filters(0), bias(0), num_output(0), kernel_H(0), kernel_W(0),
-			stride_H(1), stride_W(1),dilate_H(1),dilate_W(1), pad_H(0), pad_W(), with_bias(false), bottom_C(0) {}
+			stride_H(1), stride_W(1),dilate_H(1),dilate_W(1), pad_type(TYPE_NONE), pad_H_top(0), pad_H_bottom(0), pad_W_left(0), pad_W_right(0),
+			with_bias(false), bottom_C(0), with_prelu(false), prelu_slope(0) {}
 		~ZQ_CNN_Layer_DepthwiseConvolution() {
 			if (filters)delete filters;
 			if (bias)delete bias;
+			if (prelu_slope)delete prelu_slope;
 		}
 		ZQ_CNN_Tensor4D* filters;
 		ZQ_CNN_Tensor4D* bias;
+		ZQ_CNN_Tensor4D* prelu_slope;
 		int num_output;
 		int kernel_H;
 		int kernel_W;
@@ -710,9 +851,17 @@ namespace ZQ
 		int stride_W;
 		int dilate_H;
 		int dilate_W;
-		int pad_H;
-		int pad_W;
+
+		static const int TYPE_NONE = 0;
+		static const int TYPE_VALID = 1;
+		static const int TYPE_SAME = 2;
+		int pad_type;
+		int pad_H_top;
+		int pad_H_bottom;
+		int pad_W_left;
+		int pad_W_right;
 		bool with_bias;
+		bool with_prelu;
 
 		//
 		int bottom_C;
@@ -727,31 +876,60 @@ namespace ZQ
 				return false;
 			if (with_bias)
 			{
-				if (filters == 0 || bias == 0)
-					return false;
-				double t1 = omp_get_wtime();
-				bool ret = ZQ_CNN_Forward_SSEUtils::DepthwiseConvolutionWithBias(*((*bottoms)[0]), *filters, *bias, stride_H, stride_W, pad_H, pad_W, *((*tops)[0]));
-				double t2 = omp_get_wtime();
-				if (show_debug_info)
+				if (with_prelu)
 				{
-					double time = __max(1000 * (t2 - t1),1e-9);
-					double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
-					mop /= 1024 * 1024;
-					printf("DwConv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
-						name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
-						mop, mop / time);
-					
+					if (filters == 0 || bias == 0 || prelu_slope == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					bool ret = ZQ_CNN_Forward_SSEUtils::DepthwiseConvolutionWithBiasPReLU(*((*bottoms)[0]), *filters, *bias, *prelu_slope, 
+						stride_H, stride_W, dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]));
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("DwConv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+
+					}
+
+					return ret;
 				}
-					
-				return ret;
+				else
+				{
+					if (filters == 0 || bias == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					bool ret = ZQ_CNN_Forward_SSEUtils::DepthwiseConvolutionWithBias(*((*bottoms)[0]), *filters, *bias, stride_H, stride_W, 
+						dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]));
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*tops)[0]->GetN()*(*tops)[0]->GetH()* (*tops)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("DwConv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+
+					}
+
+					return ret;
+				}
 			}
 			else
 			{
 				if (filters == 0)
 					return false;
 				double t1 = omp_get_wtime();
-				bool ret = ZQ_CNN_Forward_SSEUtils::DepthwiseConvolution(*((*bottoms)[0]), *filters, stride_H, stride_W, pad_H, pad_W, *((*tops)[0]));
+				bool ret = ZQ_CNN_Forward_SSEUtils::DepthwiseConvolution(*((*bottoms)[0]), *filters, stride_H, stride_W, dilate_H, dilate_W, 
+					pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]));
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 				{
 					double time = __max(1000 * (t2 - t1), 1e-9);
@@ -837,26 +1015,64 @@ namespace ZQ
 						dilate_W = atoi(paras[n][1].c_str());
 					}
 				}
+				else if (_my_strcmpi("pad_type", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						if (_my_strcmpi("SAME", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_SAME;
+						else if (_my_strcmpi("VALID", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_VALID;
+					}
+				}
 				else if (_my_strcmpi("pad", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
 					{
 						int pad_num = atoi(paras[n][1].c_str());
-						pad_H = pad_W = pad_num;
+						pad_H_top = pad_H_bottom = pad_W_left = pad_W_right = pad_num;
 					}
 				}
 				else if (_my_strcmpi("pad_H", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
 					{
-						pad_H = atoi(paras[n][1].c_str());
+						pad_H_top = pad_H_bottom = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_top = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_bottom = atoi(paras[n][1].c_str());
 					}
 				}
 				else if (_my_strcmpi("pad_W", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
 					{
-						pad_W = atoi(paras[n][1].c_str());
+						pad_W_left = pad_W_right = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_left", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_left = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_right", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_right = atoi(paras[n][1].c_str());
 					}
 				}
 				else if (_my_strcmpi("stride", paras[n][0].c_str()) == 0)
@@ -981,6 +1197,33 @@ namespace ZQ
 						return false;
 				}
 			}
+
+			if (pad_type == TYPE_VALID)
+			{
+				int real_kernel_W = (kernel_W - 1)*dilate_W + 1;
+				int real_kernel_H = (kernel_H - 1)*dilate_H + 1;
+				int top_W = ceil((bottom_W - real_kernel_W + 1) / stride_W);
+				int top_H = ceil((bottom_H - real_kernel_H + 1) / stride_H);
+				int pad_W = __max((top_W - 1)*stride_W + real_kernel_W - bottom_W, 0);
+				int pad_H = __max((top_H - 1)*stride_H + real_kernel_H - bottom_H, 0);
+				pad_W_left = pad_W / 2;
+				pad_W_right = pad_W - pad_W_left;
+				pad_H_top = pad_H / 2;
+				pad_H_bottom = pad_H - pad_H_top;
+			}
+			else if (pad_type == TYPE_SAME)
+			{
+				int real_kernel_W = (kernel_W - 1)*dilate_W + 1;
+				int real_kernel_H = (kernel_H - 1)*dilate_H + 1;
+				int top_W = bottom_W / stride_W;
+				int top_H = bottom_H / stride_H;
+				int pad_W = __max((top_W - 1)*stride_W + real_kernel_W - bottom_W, 0);
+				int pad_H = __max((top_H - 1)*stride_H + real_kernel_H - bottom_H, 0);
+				pad_W_left = pad_W / 2;
+				pad_W_right = pad_W - pad_W_left;
+				pad_H_top = pad_H / 2;
+				pad_H_bottom = pad_H - pad_H_top;
+			}
 			return true;
 		}
 
@@ -988,8 +1231,10 @@ namespace ZQ
 		virtual void GetTopDim(int& top_C, int& top_H, int& top_W) const
 		{
 			top_C = num_output;
-			top_H = __max(0, floor((float)(bottom_H + pad_H * 2 - kernel_H) / stride_H) + 1);
-			top_W = __max(0, floor((float)(bottom_W + pad_W * 2 - kernel_W) / stride_W) + 1);
+			int dilate_filter_H = dilate_H * (kernel_H - 1) + 1;
+			int dilate_filter_W = dilate_W * (kernel_W - 1) + 1;
+			top_H = __max(0, floor((float)(bottom_H + pad_H_top + pad_H_bottom - dilate_filter_H) / stride_H) + 1);
+			top_W = __max(0, floor((float)(bottom_W + pad_W_left + pad_W_right - dilate_filter_W) / stride_W) + 1);
 		}
 
 		virtual bool SwapInputRGBandBGR() { return true; };
@@ -1109,7 +1354,613 @@ namespace ZQ
 		{
 			int top_C, top_H, top_W;
 			GetTopDim(top_C, top_H, top_W);
-			return (__int64)top_H*top_W*filters->GetN()*filters->GetH()*filters->GetW()*filters->GetC();
+			__int64 total_num = (__int64)top_H*top_W*filters->GetN()*filters->GetH()*filters->GetW()*filters->GetC();
+			if (with_bias)
+				total_num += (__int64)top_H*top_W*top_C;
+			if (with_prelu)
+				total_num += (__int64)top_H*top_W*top_C * 3;
+			return total_num;
+		}
+	};
+
+	class ZQ_CNN_Layer_DeConvolution : public ZQ_CNN_Layer
+	{
+	public:
+		ZQ_CNN_Layer_DeConvolution() :filters(0), bias(0), num_output(0), kernel_H(0), kernel_W(0),
+			stride_H(1), stride_W(1), dilate_H(1), dilate_W(1), pad_type(TYPE_NONE),
+			output_H(0),output_W(0),
+			pad_H_top(0), pad_H_bottom(0), pad_W_left(0), pad_W_right(0),
+			with_bias(false), with_prelu(false), prelu_slope(0), bottom_C(0) {}
+		~ZQ_CNN_Layer_DeConvolution() {
+			if (filters)delete filters;
+			if (bias)delete bias;
+			if (prelu_slope) delete prelu_slope;
+		}
+		ZQ_CNN_Tensor4D* filters;
+		ZQ_CNN_Tensor4D* bias;
+		ZQ_CNN_Tensor4D* prelu_slope;
+		int num_output;
+		int kernel_H;
+		int kernel_W;
+		int stride_H;
+		int stride_W;
+		int dilate_H;
+		int dilate_W;
+		int output_H;
+		int output_W;
+
+		static const int TYPE_NONE = 0;
+		static const int TYPE_VALID = 1;
+		static const int TYPE_SAME = 2;
+		int pad_type;
+		int pad_H_top;
+		int pad_H_bottom;
+		int pad_W_left;
+		int pad_W_right;
+		bool with_bias;
+		bool with_prelu;
+
+		//
+		int bottom_C;
+		int bottom_H;
+		int bottom_W;
+
+	public:
+
+		virtual bool Forward(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || tops->size() == 0 || (*bottoms)[0] == 0 || (*tops)[0] == 0)
+				return false;
+			if (with_bias)
+			{
+				if (with_prelu)
+				{
+					if (filters == 0 || bias == 0 || prelu_slope == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::DeConvolutionWithBiasPReLU(*((*bottoms)[0]),
+						*filters, *bias, *prelu_slope, stride_H, stride_W, dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*bottoms)[0]->GetN()*(*bottoms)[0]->GetH()* (*bottoms)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("DeConv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*bottoms)[0]->GetN(), (*bottoms)[0]->GetH(), (*bottoms)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
+				}
+				else
+				{
+					if (filters == 0 || bias == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::DeConvolutionWithBias(*((*bottoms)[0]),
+						*filters, *bias, stride_H, stride_W, dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*bottoms)[0]->GetN()*(*bottoms)[0]->GetH()* (*bottoms)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("DeConv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*bottoms)[0]->GetN(), (*bottoms)[0]->GetH(), (*bottoms)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
+				}
+			}
+			else
+			{
+				if (with_prelu)
+				{
+					if (filters == 0 || prelu_slope == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::DeConvolutionWithPReLU(*((*bottoms)[0]), *filters, *prelu_slope, stride_H, stride_W,
+						dilate_H, dilate_W, pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*bottoms)[0]->GetN()*(*bottoms)[0]->GetH()* (*bottoms)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("DeConv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*bottoms)[0]->GetN(), (*bottoms)[0]->GetH(), (*bottoms)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
+				}
+				else
+				{
+					if (filters == 0)
+						return false;
+					double t1 = omp_get_wtime();
+					void** tmp_buffer = use_buffer ? buffer : 0;
+					__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
+					bool ret = ZQ_CNN_Forward_SSEUtils::DeConvolution(*((*bottoms)[0]), *filters, stride_H, stride_W, dilate_H, dilate_W,
+						pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, *((*tops)[0]),
+						tmp_buffer, tmp_buffer_len);
+					double t2 = omp_get_wtime();
+					last_cost_time = t2 - t1;
+					if (show_debug_info)
+					{
+						double time = __max(1000 * (t2 - t1), 1e-9);
+						double mop = (double)(*bottoms)[0]->GetN()*(*bottoms)[0]->GetH()* (*bottoms)[0]->GetW()* filters->GetN()* filters->GetH()* filters->GetW()* filters->GetC();
+						mop /= 1024 * 1024;
+						printf("DeConv layer:%s %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d, MUL = %.3f M, GFLOPS=%.3f\n",
+							name.c_str(), 1000 * (t2 - t1), (*bottoms)[0]->GetN(), (*bottoms)[0]->GetH(), (*bottoms)[0]->GetW(), filters->GetN(), filters->GetH(), filters->GetW(), filters->GetC(),
+							mop, mop / time);
+					}
+					return ret;
+				}
+			}
+		}
+
+		virtual bool ReadParam(const std::string& line)
+		{
+			bottom_names.clear();
+			top_names.clear();
+			std::vector<std::vector<std::string> > paras = split_line(line);
+			int num = paras.size();
+			bool has_num_output = false, has_kernelH = false, has_kernelW = false;
+			bool has_top = false, has_bottom = false, has_name = false;
+			for (int n = 0; n < num; n++)
+			{
+				if (paras[n].size() == 0)
+					continue;
+				if (_my_strcmpi("DeConvolution", paras[n][0].c_str()) == 0)
+				{
+
+				}
+				else if (_my_strcmpi("num_output", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_num_output = true;
+						num_output = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("kernel_size", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_kernelH = true;
+						kernel_H = atoi(paras[n][1].c_str());
+						has_kernelW = true;
+						kernel_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("kernel_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_kernelH = true;
+						kernel_H = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("kernel_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_kernelW = true;
+						kernel_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("dilate", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						dilate_H = atoi(paras[n][1].c_str());
+						dilate_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("dilate_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						dilate_H = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("dilate_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						dilate_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_type", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						if (_my_strcmpi("SAME", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_SAME;
+						else if (_my_strcmpi("VALID", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_VALID;
+					}
+				}
+				else if (_my_strcmpi("pad", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						int pad_num = atoi(paras[n][1].c_str());
+						pad_H_top = pad_H_bottom = pad_W_left = pad_W_right = pad_num;
+					}
+				}
+				else if (_my_strcmpi("pad_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_top = pad_H_bottom = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_top = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_bottom = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_left = pad_W_right = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_left", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_left = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_right", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_right = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("stride", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						stride_H = atoi(paras[n][1].c_str());
+						stride_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("stride_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						stride_H = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("stride_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						stride_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("output_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						output_H = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("output_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						output_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("bias", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() > 1)
+						with_bias = atoi(paras[n][1].c_str());
+					else
+						with_bias = true;
+				}
+				else if (_my_strcmpi("top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_top = true;
+						top_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_bottom = true;
+						bottom_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("name", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_name = true;
+						name = paras[n][1];
+					}
+				}
+				else
+				{
+					std::cout << "warning: unknown para " << paras[n][0] << " in Layer " << name << "\n";
+				}
+			}
+			if (!has_num_output)std::cout << "Layer " << name << " missing " << "num_output\n";
+			if (!has_kernelH)std::cout << "Layer " << name << " missing " << "kernel_H (kernel_size)\n";
+			if (!has_kernelW)std::cout << "Layer " << name << " missing " << "kernel_W (kernel_size)\n";
+			if (!has_bottom)std::cout << "Layer " << name << " missing " << "bottom\n";
+			if (!has_top)std::cout << "Layer " << name << " missing " << "top\n";
+			if (!has_name) {
+				std::cout << "Layer " << name << " missing " << "name\n";
+				std::cout << line << "\n";
+			}
+			return has_num_output && has_kernelH && has_kernelW && has_bottom && has_top && has_name;
+		}
+
+		virtual bool LayerSetup(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || (*bottoms)[0] == 0 || tops->size() == 0 || (*tops)[0] == 0)
+				return false;
+			int bottom_N, bottom_C, bottom_H, bottom_W;
+			(*bottoms)[0]->GetShape(bottom_N, bottom_C, bottom_H, bottom_W);
+			if (!SetBottomDim(bottom_C, bottom_H, bottom_W))
+				return false;
+			int top_C, top_H, top_W;
+			GetTopDim(top_C, top_H, top_W);
+			(*tops)[0]->SetShape(bottom_N, top_C, top_H, top_W);
+			return true;
+		}
+
+		//should called after ReadParam, allocate memory in this func
+		virtual bool SetBottomDim(int bottom_C, int bottom_H, int bottom_W) {
+			this->bottom_C = bottom_C;
+			this->bottom_H = bottom_H;
+			this->bottom_W = bottom_W;
+
+			if (filters)
+			{
+				if (!filters->ChangeSize(num_output, kernel_H, kernel_W, bottom_C, 0, 0))
+					return false;
+			}
+			else
+			{
+				/*if (bottom_C <= 4)
+				filters = new ZQ_CNN_Tensor4D_NHW_C_Align128bit();
+				else*/
+				filters = new ZQ_CNN_Tensor4D_NHW_C_Align256bit();
+				if (filters == 0)return false;
+				if (!filters->ChangeSize(num_output, kernel_H, kernel_W, bottom_C, 0, 0))
+					return false;
+			}
+			if (with_bias)
+			{
+				if (bias)
+				{
+					if (!bias->ChangeSize(1, 1, 1, num_output, 0, 0))
+						return false;
+				}
+				else
+				{
+					bias = new ZQ_CNN_Tensor4D_NHW_C_Align256bit();
+					if (bias == 0)return false;
+					if (!bias->ChangeSize(1, 1, 1, num_output, 0, 0))
+						return false;
+				}
+			}
+
+			if (pad_type == TYPE_SAME)
+			{
+				int top_W = bottom_W * stride_W;
+				int top_H = bottom_H * stride_H;
+				if (output_H > 0)
+					top_H = output_H;
+				if (output_W > 0)
+					top_W = output_W;
+				int real_kernel_W = (kernel_W - 1)*dilate_W + 1;
+				int real_kernel_H = (kernel_H - 1)*dilate_H + 1;
+				int bottom_W_padded = top_W - 1 + real_kernel_W;
+				int bottom_H_padded = top_H - 1 + real_kernel_H;
+				int pad_W = bottom_W_padded - (bottom_W - 1)*stride_W - 1;
+				int pad_H = bottom_H_padded - (bottom_H - 1)*stride_H - 1;
+				pad_W_left = ceil(pad_W / 2.0);
+				pad_W_right = pad_W - pad_W_left;
+				pad_H_top = ceil(pad_H / 2.0);
+				pad_H_bottom = pad_H - pad_H_top;
+			}
+			
+			return true;
+		}
+
+		//should called after SetBottomDim
+		virtual void GetTopDim(int& top_C, int& top_H, int& top_W) const
+		{
+			int real_kernel_W = (kernel_W - 1)*dilate_W + 1;
+			int real_kernel_H = (kernel_H - 1)*dilate_H + 1;
+			top_C = num_output;
+			top_H = __max(0,(bottom_H - 1)*stride_H + 1 - real_kernel_H + (pad_H_top + pad_H_bottom) + 1);
+			top_W = __max(0,(bottom_W - 1)*stride_W + 1 - real_kernel_H + (pad_W_left + pad_W_right) + 1);
+		}
+
+		virtual bool SwapInputRGBandBGR()
+		{
+			if (filters == 0)
+				return false;
+			if (filters->GetC() != 3)
+				return false;
+			int N = filters->GetN();
+			int H = filters->GetH();
+			int W = filters->GetW();
+			int sliceStep = filters->GetSliceStep();
+			int widthStep = filters->GetWidthStep();
+			int pixStep = filters->GetPixelStep();
+			float* ptr = filters->GetFirstPixelPtr();
+			for (int n = 0; n < N; n++)
+			{
+				for (int h = 0; h < H; h++)
+				{
+					for (int w = 0; w < W; w++)
+					{
+						float* cur_ptr = ptr + n*sliceStep + h*widthStep + w*pixStep;
+						float tmp_val = cur_ptr[0];
+						cur_ptr[0] = cur_ptr[2];
+						cur_ptr[2] = tmp_val;
+					}
+				}
+			}
+			return true;
+		};
+
+
+		//should be called after ZQ_CNN_Net have allocated necessery data
+		virtual bool LoadBinary_NCHW(FILE* in)
+		{
+			if (filters == 0)
+				return false;
+			int dst_len = filters->GetN() * filters->GetH() * filters->GetW() * filters->GetC();
+			if (dst_len <= 0)
+				return false;
+			std::vector<float> nchw_raw(dst_len);
+			if (dst_len != fread_s(&nchw_raw[0], dst_len * sizeof(float), sizeof(float), dst_len, in))
+				return false;
+			if (ignore_small_value != 0)
+			{
+				for (int i = 0; i < dst_len; i++)
+				{
+					if (fabs(nchw_raw[i]) < ignore_small_value)
+						nchw_raw[i] = 0;
+				}
+			}
+			filters->ConvertFromCompactNCHW(&nchw_raw[0], filters->GetN(), filters->GetC(), filters->GetH(), filters->GetW());
+			if (with_bias)
+			{
+				int dst_len = bias->GetN() * bias->GetH() * bias->GetW() * bias->GetC();
+				if (dst_len <= 0)
+					return false;
+				nchw_raw.resize(dst_len);
+				if (dst_len != fread_s(&nchw_raw[0], dst_len * sizeof(float), sizeof(float), dst_len, in))
+					return false;
+				if (ignore_small_value != 0)
+				{
+					for (int i = 0; i < dst_len; i++)
+					{
+						if (fabs(nchw_raw[i]) < ignore_small_value)
+							nchw_raw[i] = 0;
+					}
+				}
+				bias->ConvertFromCompactNCHW(&nchw_raw[0], bias->GetN(), bias->GetC(), bias->GetH(), bias->GetW());
+			}
+			return true;
+		}
+
+		virtual bool SaveBinary_NCHW(FILE* out) const
+		{
+			if (filters == 0)
+				return false;
+			int dst_len = filters->GetN() * filters->GetH() * filters->GetW() * filters->GetC();
+			if (dst_len <= 0)
+				return false;
+			std::vector<float> nchw_raw(dst_len);
+			filters->ConvertToCompactNCHW(&nchw_raw[0]);
+			if (dst_len != fwrite(&nchw_raw[0], sizeof(float), dst_len, out))
+				return false;
+
+			if (with_bias)
+			{
+				int dst_len = bias->GetN() * bias->GetH() * bias->GetW() * bias->GetC();
+				if (dst_len <= 0)
+					return false;
+				nchw_raw.resize(dst_len);
+				bias->ConvertToCompactNCHW(&nchw_raw[0]);
+				if (dst_len != fwrite(&nchw_raw[0], sizeof(float), dst_len, out))
+					return false;
+			}
+			return true;
+		}
+
+		virtual bool LoadBinary_NCHW(const char* buffer, __int64 buffer_len, __int64& readed_length_in_bytes)
+		{
+
+			readed_length_in_bytes = 0;
+			if (filters == 0)
+				return false;
+			int dst_len = filters->GetN() * filters->GetH() * filters->GetW() * filters->GetC();
+			if (dst_len <= 0)
+				return false;
+			int dst_len_in_bytes = sizeof(float)*dst_len;
+			if (buffer_len < dst_len_in_bytes)
+				return false;
+			std::vector<float> nchw_raw(dst_len);
+			memcpy(&nchw_raw[0], buffer, dst_len_in_bytes);
+			for (int i = 0; i < dst_len; i++)
+			{
+				if (fabs(nchw_raw[i]) < ignore_small_value)
+					nchw_raw[i] = 0;
+			}
+			filters->ConvertFromCompactNCHW(&nchw_raw[0], filters->GetN(), filters->GetC(), filters->GetH(), filters->GetW());
+			buffer += dst_len_in_bytes;
+			buffer_len -= dst_len_in_bytes;
+			readed_length_in_bytes += dst_len_in_bytes;
+			if (with_bias)
+			{
+				int dst_len = bias->GetN() * bias->GetH() * bias->GetW() * bias->GetC();
+				if (dst_len <= 0)
+					return false;
+				int dst_len_in_bytes = sizeof(float)*dst_len;
+				nchw_raw.resize(dst_len);
+				memcpy(&nchw_raw[0], buffer, dst_len_in_bytes);
+				for (int i = 0; i < dst_len; i++)
+				{
+					if (fabs(nchw_raw[i]) < ignore_small_value)
+						nchw_raw[i] = 0;
+				}
+				bias->ConvertFromCompactNCHW(&nchw_raw[0], bias->GetN(), bias->GetC(), bias->GetH(), bias->GetW());
+				buffer += dst_len_in_bytes;
+				buffer_len -= dst_len_in_bytes;
+				readed_length_in_bytes += dst_len_in_bytes;
+			}
+			return true;
+		}
+
+		virtual __int64 GetNumOfMulAdd() const
+		{
+			int top_C, top_H, top_W;
+			GetTopDim(top_C, top_H, top_W);
+			__int64 total_num = (__int64)bottom_H*bottom_W*filters->GetN()*filters->GetH()*filters->GetW()*filters->GetC();
+			if (with_bias)
+				total_num += (__int64)top_H*top_W*top_C;
+			if (with_prelu)
+				total_num += (__int64)top_H*top_W*top_C * 3;
+			return total_num;
 		}
 	};
 
@@ -1157,6 +2008,7 @@ namespace ZQ
 			double t1 = omp_get_wtime();
 			bool ret = ZQ_CNN_Forward_SSEUtils::BatchNorm_b_a(*((*tops)[0]), *b, *a);
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("BatchNorm layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -1510,6 +2362,7 @@ namespace ZQ
 			double t1 = omp_get_wtime();
 			bool ret = ZQ_CNN_Forward_SSEUtils::BatchNorm_b_a(*((*tops)[0]), *b, *a);
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("BatchNorm layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -1762,6 +2615,7 @@ namespace ZQ
 				double t1 = omp_get_wtime();
 				bool ret = ZQ_CNN_Forward_SSEUtils::ScaleWithBias(*((*tops)[0]), *scale, *bias);
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 					printf("Scale layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 				return ret;
@@ -1773,6 +2627,7 @@ namespace ZQ
 				double t1 = omp_get_wtime();
 				bool ret = ZQ_CNN_Forward_SSEUtils::Scale(*((*tops)[0]), *scale);
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 					printf("Scale layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 				return ret;
@@ -2018,6 +2873,204 @@ namespace ZQ
 		}
 	};
 
+	class ZQ_CNN_Layer_AddBias : public ZQ_CNN_Layer
+	{
+	public:
+		ZQ_CNN_Layer_AddBias() :bias(0), bottom_C(0) {}
+		~ZQ_CNN_Layer_AddBias() {
+			if (bias)	delete bias;
+		}
+		ZQ_CNN_Tensor4D* bias;
+		
+		//
+		int bottom_C;
+		int bottom_H;
+		int bottom_W;
+
+	public:
+		virtual bool Forward(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || tops->size() == 0 || (*bottoms)[0] == 0 || (*tops)[0] == 0)
+				return false;
+			if ((*tops)[0] != (*bottoms)[0])
+				(*tops)[0]->CopyData(*(*bottoms)[0]);
+			if (bias == 0)
+				return false;
+			double t1 = omp_get_wtime();
+			bool ret = ZQ_CNN_Forward_SSEUtils::AddBias(*((*tops)[0]), *bias);
+			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
+			if (show_debug_info)
+				printf("AddBias layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
+			return ret;	
+		}
+
+
+		virtual bool ReadParam(const std::string& line)
+		{
+			bottom_names.clear();
+			top_names.clear();
+			std::vector<std::vector<std::string> > paras = split_line(line);
+			int num = paras.size();
+			bool has_top = false, has_bottom = false, has_name = false;
+			for (int n = 0; n < num; n++)
+			{
+				if (paras[n].size() == 0)
+					continue;
+				if (_my_strcmpi("AddBias", paras[n][0].c_str()) == 0)
+				{
+
+				}
+				else if (_my_strcmpi("top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_top = true;
+						top_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_bottom = true;
+						bottom_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("name", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_name = true;
+						name = paras[n][1];
+					}
+				}
+				else
+				{
+					std::cout << "warning: unknown para " << paras[n][0] << " in Layer " << name << "\n";
+				}
+			}
+			if (!has_bottom)std::cout << "Layer " << name << " missing " << "bottom\n";
+			if (!has_top)std::cout << "Layer " << name << " missing " << "top\n";
+			if (!has_name) {
+				std::cout << "Layer " << name << " missing " << "name\n";
+				std::cout << line << "\n";
+			}
+			return has_bottom && has_top && has_name;
+		}
+
+
+		virtual bool LayerSetup(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || (*bottoms)[0] == 0 || tops->size() == 0 || (*tops)[0] == 0)
+				return false;
+			int bottom_N, bottom_C, bottom_H, bottom_W;
+			(*bottoms)[0]->GetShape(bottom_N, bottom_C, bottom_H, bottom_W);
+			if (!SetBottomDim(bottom_C, bottom_H, bottom_W))
+				return false;
+			int top_C, top_H, top_W;
+			GetTopDim(top_C, top_H, top_W);
+			(*tops)[0]->SetShape(bottom_N, top_C, top_H, top_W);
+			return true;
+		}
+
+		//should called after ReadParam, allocate memory in this func
+		virtual bool SetBottomDim(int bottom_C, int bottom_H, int bottom_W)
+		{
+			this->bottom_C = bottom_C;
+			this->bottom_H = bottom_H;
+			this->bottom_W = bottom_W;
+			if (bias)
+			{
+				if (!bias->ChangeSize(1, 1, 1, bottom_C, 0, 0))
+					return false;
+			}
+			else
+			{
+				bias = new ZQ_CNN_Tensor4D_NHW_C_Align256bit();
+				if (bias == 0)return false;
+				if (!bias->ChangeSize(1, 1, 1, bottom_C, 0, 0))
+					return false;
+			}
+
+			return true;
+		}
+
+		//should called after SetBottomDim
+		virtual void GetTopDim(int& top_C, int& top_H, int& top_W) const
+		{
+			top_C = bottom_C;
+			top_H = bottom_H;
+			top_W = bottom_W;
+		}
+
+		virtual bool SwapInputRGBandBGR() { return true; };
+
+		//should be called after ZQ_CNN_Net have allocated necessery data
+		virtual bool LoadBinary_NCHW(FILE* in)
+		{
+			int dst_len = bias->GetN() * bias->GetH() * bias->GetW() * bias->GetC();
+			if (dst_len <= 0)
+				return false;
+			std::vector<float> nchw_raw(dst_len);
+			if (dst_len != fread_s(&nchw_raw[0], dst_len * sizeof(float), sizeof(float), dst_len, in))
+				return false;
+			if (ignore_small_value != 0)
+			{
+				for (int i = 0; i < dst_len; i++)
+				{
+					if (fabs(nchw_raw[i]) < ignore_small_value)
+						nchw_raw[i] = 0;
+				}
+			}
+			bias->ConvertFromCompactNCHW(&nchw_raw[0], bias->GetN(), bias->GetC(), bias->GetH(), bias->GetW());
+			return true;
+		}
+
+		virtual bool SaveBinary_NCHW(FILE* out) const
+		{
+			if (bias == 0)
+				return false;
+			int dst_len = bias->GetN() * bias->GetH() * bias->GetW() * bias->GetC();
+			if (dst_len <= 0)
+				return false;
+			std::vector<float> nchw_raw(dst_len);
+			bias->ConvertToCompactNCHW(&nchw_raw[0]);
+			if (dst_len != fwrite(&nchw_raw[0], sizeof(float), dst_len, out))
+				return false;
+			return true;
+		}
+
+		virtual bool LoadBinary_NCHW(const char* buffer, __int64 buffer_len, __int64& readed_length_in_bytes)
+		{
+			readed_length_in_bytes = 0;
+			int dst_len = bias->GetN() * bias->GetH() * bias->GetW() * bias->GetC();
+			if (dst_len <= 0)
+				return false;
+			int dst_len_in_bytes = dst_len * sizeof(float);
+			if (dst_len_in_bytes > buffer_len)
+				return false;
+			std::vector<float> nchw_raw(dst_len);
+			memcpy(&nchw_raw[0], buffer, dst_len_in_bytes);
+			for (int i = 0; i < dst_len; i++)
+			{
+				if (fabs(nchw_raw[i]) < ignore_small_value)
+					nchw_raw[i] = 0;
+			}
+			bias->ConvertFromCompactNCHW(&nchw_raw[0], bias->GetN(), bias->GetC(), bias->GetH(), bias->GetW());
+			buffer += dst_len_in_bytes;
+			buffer_len -= dst_len_in_bytes;
+			readed_length_in_bytes += dst_len_in_bytes;
+			
+			return true;
+		}
+
+		virtual __int64 GetNumOfMulAdd() const
+		{
+			return bottom_W*bottom_H*bottom_C;
+		}
+	};
+
 	class ZQ_CNN_Layer_PReLU : public ZQ_CNN_Layer
 	{
 	public:
@@ -2044,6 +3097,7 @@ namespace ZQ
 			double t1 = omp_get_wtime();
 			bool ret = ZQ_CNN_Forward_SSEUtils::PReLU(*((*tops)[0]), *slope);
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("PReLU layer: %s %.3f ms \n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -2211,7 +3265,7 @@ namespace ZQ
 
 		virtual __int64 GetNumOfMulAdd() const
 		{
-			return bottom_W*bottom_H*bottom_C;
+			return (__int64)bottom_W*bottom_H*bottom_C*3;
 		}
 	};
 
@@ -2238,6 +3292,7 @@ namespace ZQ
 			double t1 = omp_get_wtime();
 			ZQ_CNN_Forward_SSEUtils::ReLU(*((*tops)[0]), slope);
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("ReLU layer: %s %.3f ms \n", name.c_str(), 1000 * (t2 - t1));
 			return true;
@@ -2354,18 +3409,163 @@ namespace ZQ
 		}
 	};
 
+	class ZQ_CNN_Layer_ReLU6 : public ZQ_CNN_Layer
+	{
+	public:
+
+		float slope;
+		//
+		int bottom_C;
+		int bottom_H;
+		int bottom_W;
+
+		ZQ_CNN_Layer_ReLU6() :slope(0), bottom_C(0) {}
+		~ZQ_CNN_Layer_ReLU6() {}
+
+		virtual bool Forward(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || tops->size() == 0 || (*bottoms)[0] == 0 || (*tops)[0] == 0)
+				return false;
+			if ((*tops)[0] != (*bottoms)[0])
+				(*tops)[0]->CopyData(*(*bottoms)[0]);
+
+			double t1 = omp_get_wtime();
+			ZQ_CNN_Forward_SSEUtils::ReLU6(*((*tops)[0]));
+			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
+			if (show_debug_info)
+				printf("ReLU6 layer: %s %.3f ms \n", name.c_str(), 1000 * (t2 - t1));
+			return true;
+		}
+
+
+		virtual bool ReadParam(const std::string& line)
+		{
+			bottom_names.clear();
+			top_names.clear();
+			std::vector<std::vector<std::string> > paras = split_line(line);
+			int num = paras.size();
+			bool has_top = false, has_bottom = false, has_name = false;
+			for (int n = 0; n < num; n++)
+			{
+				if (paras[n].size() == 0)
+					continue;
+				if (_my_strcmpi("ReLU6", paras[n][0].c_str()) == 0)
+				{
+
+				}
+				else if (_my_strcmpi("slope", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						slope = atof(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_top = true;
+						top_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_bottom = true;
+						bottom_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("name", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_name = true;
+						name = paras[n][1];
+					}
+				}
+				else
+				{
+					std::cout << "warning: unknown para " << paras[n][0] << " in Layer " << name << "\n";
+				}
+			}
+			if (!has_bottom)std::cout << "Layer " << name << " missing " << "bottom\n";
+			if (!has_top)std::cout << "Layer " << name << " missing " << "top\n";
+			if (!has_name) {
+				std::cout << "Layer " << name << " missing " << "name\n";
+				std::cout << line << "\n";
+			}
+			return has_bottom && has_top && has_name;
+		}
+		virtual bool LayerSetup(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || (*bottoms)[0] == 0 || tops->size() == 0 || (*tops)[0] == 0)
+				return false;
+			int bottom_N, bottom_C, bottom_H, bottom_W;
+			(*bottoms)[0]->GetShape(bottom_N, bottom_C, bottom_H, bottom_W);
+			if (!SetBottomDim(bottom_C, bottom_H, bottom_W))
+				return false;
+			int top_C, top_H, top_W;
+			GetTopDim(top_C, top_H, top_W);
+			(*tops)[0]->SetShape(bottom_N, top_C, top_H, top_W);
+			return true;
+		}
+
+		//should called after ReadParam, allocate memory in this func
+		virtual bool SetBottomDim(int bottom_C, int bottom_H, int bottom_W)
+		{
+			this->bottom_C = bottom_C;
+			this->bottom_H = bottom_H;
+			this->bottom_W = bottom_W;
+			return true;
+		}
+
+		//should called after SetBottomDim
+		virtual void GetTopDim(int& top_C, int& top_H, int& top_W) const
+		{
+			top_C = bottom_C;
+			top_H = bottom_H;
+			top_W = bottom_W;
+		}
+
+		virtual bool SwapInputRGBandBGR() { return true; };
+
+		//should be called after ZQ_CNN_Net have allocated necessery data
+		virtual bool LoadBinary_NCHW(FILE* in) { return true; }
+
+		virtual bool SaveBinary_NCHW(FILE* out) const { return true; }
+
+		virtual bool LoadBinary_NCHW(const char* buffer, __int64 buffer_len, __int64& readed_length_in_bytes)
+		{
+			readed_length_in_bytes = 0;
+			return true;
+		}
+
+		virtual __int64 GetNumOfMulAdd() const
+		{
+			return bottom_W*bottom_H*bottom_C;
+		}
+	};
 	class ZQ_CNN_Layer_Pooling : public ZQ_CNN_Layer
 	{
 	public:
 		ZQ_CNN_Layer_Pooling() :kernel_H(3), kernel_W(3), stride_H(2), stride_W(2), 
-			pad_H(0), pad_W(0), global_pool(false), type(0) {}
+			pad_type(TYPE_NONE), pad_H_top(0), pad_H_bottom(0), pad_W_left(0), pad_W_right(0), global_pool(false), type(0) {}
 		~ZQ_CNN_Layer_Pooling() {}
 		int kernel_H;
 		int kernel_W;
 		int stride_H;
 		int stride_W;
-		int pad_H;
-		int pad_W;
+
+		static const int TYPE_NONE = 0;
+		static const int TYPE_VALID = 1;
+		static const int TYPE_SAME = 2;
+		int pad_type;
+		int pad_H_top;
+		int pad_H_bottom;
+		int pad_W_left;
+		int pad_W_right;
 		bool global_pool;
 		static const int TYPE_MAXPOOLING = 0;
 		static const int TYPE_AVGPOOLING = 1;
@@ -2383,8 +3583,10 @@ namespace ZQ
 			if (type == TYPE_MAXPOOLING)
 			{
 				double t1 = omp_get_wtime();
-				ZQ_CNN_Forward_SSEUtils::MaxPooling(*((*bottoms)[0]), *((*tops)[0]), kernel_H, kernel_W, stride_H, stride_W, global_pool);
+				ZQ_CNN_Forward_SSEUtils::MaxPooling(*((*bottoms)[0]), *((*tops)[0]), kernel_H, kernel_W, stride_H, stride_W, 
+					pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, global_pool);
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 					printf("Pooling layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 				return true;
@@ -2392,8 +3594,10 @@ namespace ZQ
 			else if (type == TYPE_AVGPOOLING)
 			{
 				double t1 = omp_get_wtime();
-				ZQ_CNN_Forward_SSEUtils::AVGPooling(*((*bottoms)[0]), *((*tops)[0]), kernel_H, kernel_W, stride_H, stride_W, global_pool);
+				ZQ_CNN_Forward_SSEUtils::AVGPooling(*((*bottoms)[0]), *((*tops)[0]), kernel_H, kernel_W, stride_H, stride_W,
+					pad_H_top, pad_H_bottom, pad_W_left, pad_W_right, global_pool);
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 					printf("Pooling layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 				return true;
@@ -2433,6 +3637,22 @@ namespace ZQ
 						kernel_W = atoi(paras[n][1].c_str());
 					}
 				}
+				else if (_my_strcmpi("kernel_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_kernelH = true;
+						kernel_H = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("kernel_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_kernelW = true;
+						kernel_W = atoi(paras[n][1].c_str());
+					}
+				}
 				else if (_my_strcmpi("stride", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
@@ -2443,12 +3663,79 @@ namespace ZQ
 						stride_W = atoi(paras[n][1].c_str());
 					}
 				}
+				else if (_my_strcmpi("stride_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_strideH = true;
+						stride_H = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("stride_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_strideW = true;
+						stride_W = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_type", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						if (_my_strcmpi("SAME", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_SAME;
+						else if (_my_strcmpi("VALID", paras[n][1].c_str()) == 0)
+							pad_type = TYPE_VALID;
+					}
+				}
 				else if (_my_strcmpi("pad", paras[n][0].c_str()) == 0)
 				{
 					if (paras[n].size() >= 2)
 					{
-						pad_H = atoi(paras[n][1].c_str());
-						pad_W = atoi(paras[n][1].c_str());
+						pad_H_top = pad_H_bottom = pad_W_left = pad_W_right = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_top = pad_H_bottom = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_top = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_H_bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_H_bottom = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_left = pad_W_right = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_left", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_left = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("pad_W_right", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						pad_W_right = atoi(paras[n][1].c_str());
 					}
 				}
 				else if (_my_strcmpi("global_pool", paras[n][0].c_str()) == 0)
@@ -2541,6 +3828,29 @@ namespace ZQ
 			this->bottom_C = bottom_C; 
 			this->bottom_H = bottom_H;
 			this->bottom_W = bottom_W;
+
+			if (pad_type == TYPE_VALID)
+			{
+				int top_W = ceil((bottom_W - kernel_W + 1) / stride_W);
+				int top_H = ceil((bottom_H - kernel_H + 1) / stride_H);
+				int pad_W = __max((top_W - 1)*stride_W + kernel_W - bottom_W, 0);
+				int pad_H = __max((top_H - 1)*stride_H + kernel_H - bottom_H, 0);
+				pad_W_left = pad_W / 2;
+				pad_W_right = pad_W - pad_W_left;
+				pad_H_top = pad_H / 2;
+				pad_H_bottom = pad_H - pad_H_top;
+			}
+			else if (pad_type == TYPE_SAME)
+			{
+				int top_W = bottom_W / stride_W;
+				int top_H = bottom_H / stride_H;
+				int pad_W = __max((top_W - 1)*stride_W + kernel_W - bottom_W, 0);
+				int pad_H = __max((top_H - 1)*stride_H + kernel_H - bottom_H, 0);
+				pad_W_left = pad_W / 2;
+				pad_W_right = pad_W - pad_W_left;
+				pad_H_top = pad_H / 2;
+				pad_H_bottom = pad_H - pad_H_top;
+			}
 			return true; 
 		}
 
@@ -2556,8 +3866,8 @@ namespace ZQ
 			else
 			{
 				top_C = bottom_C;
-				top_H = __max(0, ceil((float)(bottom_H - kernel_H) / stride_H) + 1);
-				top_W = __max(0, ceil((float)(bottom_W - kernel_W) / stride_W) + 1);
+				top_H = __max(0, ceil((float)(bottom_H + pad_H_top + pad_H_bottom - kernel_H) / stride_H) + 1);
+				top_W = __max(0, ceil((float)(bottom_W + pad_W_left + pad_W_right - kernel_W) / stride_W) + 1);
 			}
 		}
 
@@ -2619,6 +3929,7 @@ namespace ZQ
 				bool ret = ZQ_CNN_Forward_SSEUtils::InnerProductWithBias(*((*bottoms)[0]), 
 					*filters, *bias, *((*tops)[0]), tmp_buffer, tmp_buffer_len);
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 					printf("Innerproduct layer: %.3f ms NHW %dx%dx%d filter: NHWC %d x %d x %d x %d\n", 
 						1000 * (t2 - t1), (*tops)[0]->GetN(), (*tops)[0]->GetH(), (*tops)[0]->GetW(), 
@@ -2633,8 +3944,9 @@ namespace ZQ
 				void** tmp_buffer = use_buffer ? buffer : 0;
 				__int64* tmp_buffer_len = use_buffer ? buffer_len : 0;
 				bool ret = ZQ_CNN_Forward_SSEUtils::InnerProduct(*((*bottoms)[0]), *filters, *((*tops)[0]),
-					buffer,buffer_len);
+					tmp_buffer,tmp_buffer_len);
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 					printf("Innerproduct layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 				return ret;
@@ -2974,6 +4286,7 @@ namespace ZQ
 			double t1 = omp_get_wtime();
 			ZQ_CNN_Forward_SSEUtils::Softmax(*((*tops)[0]), axis);
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Softmax layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return true;
@@ -3113,6 +4426,7 @@ namespace ZQ
 			/*dropout ratio is not used in test phase*/
 			//ZQ_CNN_Forward_SSEUtils::Dropout(*((*tops)[0]), dropout_ratio);
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Dropout layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return true;
@@ -3248,6 +4562,7 @@ namespace ZQ
 			if ((*tops)[0] != (*bottoms)[0])
 				(*tops)[0]->CopyData(*(*bottoms)[0]);
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Copy layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return true;
@@ -3356,6 +4671,265 @@ namespace ZQ
 		}
 	};
 
+	class ZQ_CNN_Layer_UpSampling : public ZQ_CNN_Layer
+	{
+	public:
+		ZQ_CNN_Layer_UpSampling():has_scale(false),has_dst_size(false){}
+		~ZQ_CNN_Layer_UpSampling() {}
+
+		static const int SampleType_Nearest = 0;
+		static const int SampleType_Bilinear = 1;
+		int sample_type;//
+		bool has_scale;
+		bool has_dst_size;
+		float scale_h;
+		float scale_w;
+		int dst_h;
+		int dst_w;
+		//
+		int bottom_C;
+		int bottom_H;
+		int bottom_W;
+
+		virtual bool Forward(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || tops->size() == 0 || (*bottoms)[0] == 0 || (*tops)[0] == 0)
+				return false;
+
+			bool ret = false;
+			double t1 = omp_get_wtime();
+			if (sample_type == SampleType_Nearest)
+			{
+				if(has_scale)
+					ret = ZQ_CNN_Forward_SSEUtils::UpSamplingNearest(*((*bottoms)[0]), scale_h, scale_w, *((*tops)[0]));
+				else 
+					ret = ZQ_CNN_Forward_SSEUtils::UpSamplingNearest_TargetSize(*((*bottoms)[0]), dst_h, dst_w, *((*tops)[0]));
+			}
+			else if (sample_type == SampleType_Bilinear)
+			{
+				if (has_scale)
+					ret = ZQ_CNN_Forward_SSEUtils::UpSamplingBilinear(*((*bottoms)[0]), scale_h, scale_w, *((*tops)[0]));
+				else
+					ret = ZQ_CNN_Forward_SSEUtils::UpSamplingBilinear_TargetSize(*((*bottoms)[0]), dst_h, dst_w, *((*tops)[0]));
+			}
+			else
+			{
+				std::cout << "unknown UpSampling sample_type " << sample_type << " in Layer " << name << "\n";
+				return false;
+			}
+			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
+			if (show_debug_info)
+				printf("UpSampling layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
+			return ret;
+		}
+
+		virtual bool ReadParam(const std::string& line)
+		{
+			bottom_names.clear();
+			top_names.clear();
+			std::vector<std::vector<std::string> > paras = split_line(line);
+			int num = paras.size();
+			bool has_sample_type = false; 
+			bool has_scale_h = false;
+			bool has_scale_w = false;
+			bool has_dst_h = false;
+			bool has_dst_w = false;
+			bool has_top = false, has_bottom = false, has_name = false;
+			for (int n = 0; n < num; n++)
+			{
+				if (paras[n].size() == 0)
+					continue;
+				if (_my_strcmpi("UpSampling", paras[n][0].c_str()) == 0)
+				{
+
+				}
+				else if (_my_strcmpi("sample_type", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_sample_type = true;
+						const char* str = paras[n][1].c_str();
+
+						if (_my_strcmpi(str, "nearest") == 0)
+						{
+							sample_type = SampleType_Nearest;
+						}
+						else if (_my_strcmpi(str, "bilinear") == 0)
+						{
+							sample_type = SampleType_Bilinear;
+						}
+						else
+						{
+							sample_type = atoi(str);
+						}
+					}
+				}
+				else if (_my_strcmpi("top", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_top = true;
+						top_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("bottom", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_bottom = true;
+						bottom_names.push_back(paras[n][1]);
+					}
+				}
+				else if (_my_strcmpi("name", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_name = true;
+						name = paras[n][1];
+					}
+				}
+				else if (_my_strcmpi("scale_h", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_scale_h = true;
+						scale_h = atof(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("scale_w", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_scale_w = true;
+						scale_w = atof(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("dst_h", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_dst_h = true;
+						dst_h = atoi(paras[n][1].c_str());
+					}
+				}
+				else if (_my_strcmpi("dst_w", paras[n][0].c_str()) == 0)
+				{
+					if (paras[n].size() >= 2)
+					{
+						has_dst_w = true;
+						dst_w = atoi(paras[n][1].c_str());
+					}
+				}
+				else
+				{
+					std::cout << "warning: unknown para " << paras[n][0] << " in Layer " << name << "\n";
+				}
+
+			}
+			bool ret = true;
+			if (!has_sample_type)
+			{
+				std::cout << "Layer " << name << " missing " << "sample_type\n";
+				ret = false;
+			}
+			if (!has_bottom)
+			{
+				std::cout << "Layer " << name << " missing " << "bottom\n";
+				ret = false;
+			}
+			if (!has_top)
+			{
+				std::cout << "Layer " << name << " missing " << "top\n";
+				ret = false;
+			}
+			has_scale = has_scale_h && has_scale_w;
+			has_dst_size = has_dst_h && has_dst_w;
+			if (has_sample_type)
+			{
+				if (has_scale && has_dst_size)
+				{
+					std::cout << "Layer " << name << " (scale_h,scale_w) and (dst_h,dst_w) should not be specified simultaneously!\n";
+					ret = false;
+				}
+				else if(!has_scale && !has_dst_size)
+				{
+					std::cout << "Layer " << name << " (scale_h,scale_w) or (dst_h,dst_w) should be specified!\n";
+					ret = false;
+				}	
+			}
+
+			if (!has_name) 
+			{
+				std::cout << "Layer " << name << " missing " << "name\n";
+				std::cout << line << "\n";
+				ret = false;
+			}
+			return ret;
+		}
+
+		virtual bool LayerSetup(std::vector<ZQ_CNN_Tensor4D*>* bottoms, std::vector<ZQ_CNN_Tensor4D*>* tops)
+		{
+			if (bottoms == 0 || tops == 0 || bottoms->size() == 0 || (*bottoms)[0] == 0 || tops->size() == 0 || (*tops)[0] == 0)
+				return false;
+			int bottom_N, bottom_C, bottom_H, bottom_W;
+			(*bottoms)[0]->GetShape(bottom_N, bottom_C, bottom_H, bottom_W);
+			if (!SetBottomDim(bottom_C, bottom_H, bottom_W))
+				return false;
+			int top_C, top_H, top_W;
+			GetTopDim(top_C, top_H, top_W);
+			(*tops)[0]->SetShape(bottom_N, top_C, top_H, top_W);
+			return true;
+		}
+
+		//should called after ReadParam, allocate memory in this func
+		virtual bool SetBottomDim(int bottom_C, int bottom_H, int bottom_W)
+		{
+			this->bottom_C = bottom_C;
+			this->bottom_H = bottom_H;
+			this->bottom_W = bottom_W;
+			return true;
+		}
+
+		//should called after SetBottomDim
+		virtual void GetTopDim(int& top_C, int& top_H, int& top_W) const
+		{
+			if (has_scale)
+			{
+				top_C = bottom_C;
+				top_H = bottom_H*scale_h;
+				top_W = bottom_W*scale_w;
+			}
+			else
+			{
+				top_C = bottom_C;
+				top_H = dst_h;
+				top_W = dst_w;
+			}
+		}
+
+		virtual bool SwapInputRGBandBGR() { return true; };
+
+		//should be called after ZQ_CNN_Net have allocated necessery data
+		virtual bool LoadBinary_NCHW(FILE* in) { return true; }
+
+		virtual bool SaveBinary_NCHW(FILE* out) const { return true; }
+
+		virtual bool LoadBinary_NCHW(const char* buffer, __int64 buffer_len, __int64& readed_length_in_bytes)
+		{
+			readed_length_in_bytes = 0;
+			return true;
+		}
+
+		virtual __int64 GetNumOfMulAdd() const
+		{
+			if (sample_type == SampleType_Nearest)
+				return bottom_C*bottom_H*bottom_W*scale_h*scale_w;
+			else
+				return 0;
+		}
+	};
+
 	class ZQ_CNN_Layer_Eltwise : public ZQ_CNN_Layer
 	{
 	public:
@@ -3405,6 +4979,7 @@ namespace ZQ
 				return false;
 			}
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Eltwise layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -3652,6 +5227,7 @@ namespace ZQ
 				return false;
 			}
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("ScalarOperation layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return true;
@@ -3921,6 +5497,7 @@ namespace ZQ
 				return false;
 			}
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("UnaryOperation layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return true;
@@ -4110,6 +5687,7 @@ namespace ZQ
 				double t1 = omp_get_wtime();
 				bool ret = ZQ_CNN_Forward_SSEUtils::LRN_across_channels(*(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[0],local_size,alpha,beta,k, *((*tops)[0]));
 				double t2 = omp_get_wtime();
+				last_cost_time = t2 - t1;
 				if (show_debug_info)
 					printf("LRN layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 				return ret;
@@ -4273,7 +5851,7 @@ namespace ZQ
 	class ZQ_CNN_Layer_Normalize : public ZQ_CNN_Layer
 	{
 	public:
-		ZQ_CNN_Layer_Normalize():across_spatial(false),channel_shared(false), eps(1e-10){}
+		ZQ_CNN_Layer_Normalize():across_spatial(false),channel_shared(false), eps(1e-10),scale(0){}
 		~ZQ_CNN_Layer_Normalize(){
 			if (scale) delete scale;
 		}
@@ -4485,6 +6063,7 @@ namespace ZQ
 			bool ret = ZQ_CNN_Forward_SSEUtils::Permute(*(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[0], order, *((*tops)[0]));
 			int C = (*bottoms)[0]->GetC();
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Permute layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -4650,6 +6229,7 @@ namespace ZQ
 			double t1 = omp_get_wtime();
 			bool ret = ZQ_CNN_Forward_SSEUtils::Flatten(*(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[0], axis, end_axis, *((*tops)[0]));
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Flatten layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -4817,6 +6397,7 @@ namespace ZQ
 			bool ret = ZQ_CNN_Forward_SSEUtils::Reshape(*(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[0], shape, *((*tops)[0]));
 			const float* ptr = (*bottoms)[0]->GetFirstPixelPtr();
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Reshape layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -5042,6 +6623,7 @@ namespace ZQ
 			bool ret = ZQ_CNN_Forward_SSEUtils::PriorBox(*(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[0], *(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[1],
 				min_sizes, max_sizes, aspect_ratios, variance, flip, num_priors, clip, img_w, img_h, step_w, step_h, offset, *((*tops)[0]));
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("PriorBox layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -5361,6 +6943,7 @@ namespace ZQ
 			bool ret = ZQ_CNN_Forward_SSEUtils::PriorBoxText(*(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[0], *(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[1],
 				min_sizes, max_sizes, aspect_ratios, variance, flip, num_priors, clip, img_w, img_h, step_w, step_h, offset, *((*tops)[0]));
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("PriorBox layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -5505,6 +7088,7 @@ namespace ZQ
 			bool ret = ZQ_CNN_Forward_SSEUtils::PriorBox_MXNET(*(*(std::vector<const ZQ_CNN_Tensor4D*>*)bottoms)[0], 
 				sizes, aspect_ratios, variances, num_priors, clip, step_w, step_h, offset, *((*tops)[0]));
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("PriorBox_MXNET layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -5730,6 +7314,7 @@ namespace ZQ
 			double t1 = omp_get_wtime();
 			bool ret = ZQ_CNN_Forward_SSEUtils::Concat_NCHW(*bottoms, axis, *((*tops)[0]));
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Concat layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -5892,6 +7477,7 @@ namespace ZQ
 				num_priors, num_loc_classes, num_classes, share_location, background_label_id, code_type, variance_encoded_in_target,
 				nms_threshold, nms_eta, nms_top_k, confidence_threshold, keep_top_k, *((*tops)[0]));
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Concat layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -6111,6 +7697,7 @@ namespace ZQ
 			bool ret = ZQ_CNN_Forward_SSEUtils::DetectionOuput_MXNET(*(*bottoms)[1], *(*bottoms)[0], *(*bottoms)[2],
 				variances,	clip, nms_threshold, nms_top_k, confidence_threshold, keep_top_k, *((*tops)[0]));
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Concat layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -6289,6 +7876,7 @@ namespace ZQ
 				return false;
 			}
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Reduction layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -6496,6 +8084,7 @@ namespace ZQ
 			ret = ZQ_CNN_Forward_SSEUtils::Sqrt(*((*tops)[0]));
 
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Sqrt layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;
@@ -6631,6 +8220,7 @@ namespace ZQ
 			ret = ZQ_CNN_Forward_SSEUtils::Tile(*((*bottoms)[0]),tile_n, tile_h, tile_w, tile_c, *((*tops)[0]));
 
 			double t2 = omp_get_wtime();
+			last_cost_time = t2 - t1;
 			if (show_debug_info)
 				printf("Tile layer: %s cost : %.3f ms\n", name.c_str(), 1000 * (t2 - t1));
 			return ret;

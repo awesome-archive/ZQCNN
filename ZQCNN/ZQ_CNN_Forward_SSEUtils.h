@@ -1,7 +1,6 @@
 #ifndef _ZQ_CNN_FORWARD_SSE_UTILS_H_
 #define _ZQ_CNN_FORWARD_SSE_UTILS_H_
 #pragma once
-#include "ZQ_CNN_Defines.h"
 #include "ZQ_CNN_Tensor4D.h"
 #include "ZQ_CNN_BBoxUtils.h"
 #include "ZQ_CNN_CompileConfig.h"
@@ -16,11 +15,156 @@ namespace ZQ
 	class ZQ_CNN_Forward_SSEUtils
 	{
 	public:
-		static bool ConvolutionWithBias(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, const ZQ_CNN_Tensor4D& bias,
-			int strideH, int strideW, int dilation_H, int dilation_W, int padH, int padW, ZQ_CNN_Tensor4D& output,
+
+		static bool UpSamplingNearest(ZQ_CNN_Tensor4D& input, float scale_h, float scale_w, ZQ_CNN_Tensor4D& output)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int need_H = int(in_H * scale_h+0.5);
+			int need_W = int(in_W * scale_w+0.5);
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			
+			int need_N = in_N;
+
+			int need_C = in_C;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			if (!input.ResizeNearest(output, need_W, need_H, -1, -1))
+				return false;
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool UpSamplingBilinear(ZQ_CNN_Tensor4D& input, float scale_h, float scale_w, ZQ_CNN_Tensor4D& output)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int need_H = int(in_H * scale_h + 0.5);
+			int need_W = int(in_W * scale_w + 0.5);
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+
+			int need_N = in_N;
+
+			int need_C = in_C;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			if (!input.ResizeBilinear(output, need_W, need_H, -1, -1))
+				return false;
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool UpSamplingNearest_TargetSize(ZQ_CNN_Tensor4D& input, int dst_h, int dst_w, ZQ_CNN_Tensor4D& output)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int need_H = dst_h;
+			int need_W = dst_w;
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+
+			int need_N = in_N;
+
+			int need_C = in_C;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			if (!input.ResizeNearest(output, need_W, need_H, -1, -1))
+				return false;
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool UpSamplingBilinear_TargetSize(ZQ_CNN_Tensor4D& input, int dst_h, int dst_w, ZQ_CNN_Tensor4D& output)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int need_H = dst_h;
+			int need_W = dst_w;
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+
+			int need_N = in_N;
+
+			int need_C = in_C;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			if (!input.ResizeBilinear(output, need_W, need_H, -1, -1))
+				return false;
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool DeConvolutionWithBias(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, const ZQ_CNN_Tensor4D& bias,
+			int strideH, int strideW, int dilation_H, int dilation_W, int padH_top, int padH_bottom, int padW_left, int padW_right,
+			ZQ_CNN_Tensor4D& output,
 			void** buffer = 0, __int64* buffer_len = 0)
 		{
-			//num_threads = 4;
 			double t1 = omp_get_wtime();
 			int in_N = input.GetN();
 			int in_H = input.GetH();
@@ -34,9 +178,360 @@ namespace ZQ
 			int out_H = output.GetH();
 			int out_W = output.GetW();
 			int out_C = output.GetC();
-			float bias_C = bias.GetC();
-			int need_H = (in_H - (filter_H - 1)*dilation_H - 1 + (padH << 1)) / strideH + 1;
-			int need_W = (in_W - (filter_W - 1)*dilation_W - 1 + (padW << 1)) / strideW + 1;
+			int bias_C = bias.GetC();
+			int need_H = ((in_H - 1)*strideH + 1 - (filter_H - 1)*dilation_H - 1 + (padH_top + padH_bottom) + 1);
+			int need_W = ((in_W - 1)*strideW + 1 - (filter_W - 1)*dilation_W - 1 + (padW_left + padW_right) + 1);
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			if (filter_C != in_C || filter_N != bias_C)
+				return false;
+
+			int need_N = in_N;
+
+			int need_C = filter_N;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+
+			int in_sliceStep = input.GetSliceStep();
+			int in_widthStep = input.GetWidthStep();
+			int in_pixStep = input.GetPixelStep();
+			int filter_sliceStep = filters.GetSliceStep();
+			int filter_widthStep = filters.GetWidthStep();
+			int filter_pixStep = filters.GetPixelStep();
+			int out_sliceStep = output.GetSliceStep();
+			int out_widthStep = output.GetWidthStep();
+			int out_pixStep = output.GetPixelStep();
+			float* in_firstPixelData = input.GetFirstPixelPtr();
+			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
+			float* out_firstPixelData = output.GetFirstPixelPtr();
+			const float* bias_firstPixelData = bias.GetFirstPixelPtr();
+
+			int align_mode = __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType()));
+			if (in_C == 1)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+			else if (in_C <= 4)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+			else if (in_C <= 8)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			//align_mode = ZQ_CNN_Tensor4D::ALIGN_0;
+			//output.Reset();
+
+			_deconvolution_with_padding(align_mode, in_firstPixelData, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, padH_top, padH_bottom, padW_left,padW_right,
+				buffer, buffer_len);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+			_addbias(__min(bias.GetAlignType(), align_mode), out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep,
+				bias_firstPixelData);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool DeConvolutionWithBiasPReLU(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, const ZQ_CNN_Tensor4D& bias,
+			const ZQ_CNN_Tensor4D& slope, int strideH, int strideW, int dilation_H, int dilation_W,
+			int padH_top, int padH_bottom, int padW_left, int padW_right, ZQ_CNN_Tensor4D& output,
+			void** buffer = 0, __int64* buffer_len = 0)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int filter_N = filters.GetN();
+			int filter_H = filters.GetH();
+			int filter_W = filters.GetW();
+			int filter_C = filters.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int bias_C = bias.GetC();
+			int slope_C = slope.GetC();
+			int need_H = ((in_H - 1)*strideH + 1 - (filter_H - 1)*dilation_H - 1 + (padH_top + padH_bottom) + 1);
+			int need_W = ((in_W - 1)*strideW + 1 - (filter_W - 1)*dilation_W - 1 + (padW_left + padW_right) + 1);
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			if (filter_C != in_C || filter_N != bias_C || filter_N != slope_C)
+				return false;
+
+			int need_N = in_N;
+
+			int need_C = filter_N;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+
+			int in_sliceStep = input.GetSliceStep();
+			int in_widthStep = input.GetWidthStep();
+			int in_pixStep = input.GetPixelStep();
+			int filter_sliceStep = filters.GetSliceStep();
+			int filter_widthStep = filters.GetWidthStep();
+			int filter_pixStep = filters.GetPixelStep();
+			int out_sliceStep = output.GetSliceStep();
+			int out_widthStep = output.GetWidthStep();
+			int out_pixStep = output.GetPixelStep();
+			float* in_firstPixelData = input.GetFirstPixelPtr();
+			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
+			float* out_firstPixelData = output.GetFirstPixelPtr();
+			const float* bias_firstPixelData = bias.GetFirstPixelPtr();
+			const float* slope_firstPixelData = slope.GetFirstPixelPtr();
+
+			int align_mode = __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType()));
+			if (in_C == 1)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+			else if (in_C <= 4)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+			else if (in_C <= 8)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
+			//output.Reset();
+
+			_deconvolution_with_padding(align_mode, in_firstPixelData, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, padH_top,padH_bottom,padW_left,padW_right,
+				buffer, buffer_len);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+			_addbias_prelu(__min(__min(bias.GetAlignType(), slope.GetAlignType()), align_mode), out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep,
+				bias_firstPixelData, slope_firstPixelData);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool DeConvolutionWithPReLU(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters,
+			const ZQ_CNN_Tensor4D& slope, int strideH, int strideW, int dilation_H, int dilation_W,
+			int padH_top, int padH_bottom, int padW_left, int padW_right, ZQ_CNN_Tensor4D& output,
+			void** buffer = 0, __int64* buffer_len = 0)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int filter_N = filters.GetN();
+			int filter_H = filters.GetH();
+			int filter_W = filters.GetW();
+			int filter_C = filters.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int slope_C = slope.GetC();
+			int need_H = ((in_H - 1)*strideH + 1 - (filter_H - 1)*dilation_H - 1 + (padH_top + padH_bottom) + 1);
+			int need_W = ((in_W - 1)*strideW + 1 - (filter_W - 1)*dilation_W - 1 + (padW_left + padW_right) + 1);
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			if (filter_C != in_C || filter_N != slope_C)
+				return false;
+
+			int need_N = in_N;
+
+			int need_C = filter_N;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			int in_sliceStep = input.GetSliceStep();
+			int in_widthStep = input.GetWidthStep();
+			int in_pixStep = input.GetPixelStep();
+			int filter_sliceStep = filters.GetSliceStep();
+			int filter_widthStep = filters.GetWidthStep();
+			int filter_pixStep = filters.GetPixelStep();
+			int out_sliceStep = output.GetSliceStep();
+			int out_widthStep = output.GetWidthStep();
+			int out_pixStep = output.GetPixelStep();
+			float* in_firstPixelData = input.GetFirstPixelPtr();
+			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
+			float* out_firstPixelData = output.GetFirstPixelPtr();
+			const float* slope_firstPixelData = slope.GetFirstPixelPtr();
+
+			int align_mode = __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType()));
+			if (in_C == 1)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+			else if (in_C <= 4)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+			else if (in_C <= 8)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
+			//output.Reset();
+
+			_deconvolution_with_padding(align_mode, in_firstPixelData, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, padH_top, padH_bottom, padW_left, padW_right,
+				buffer, buffer_len);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+			_prelu(__min(slope.GetAlignType(), align_mode), out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep,
+				slope_firstPixelData);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool DeConvolution(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, int strideH, int strideW, int dilation_H, int dilation_W,
+			int padH_top, int padH_bottom, int padW_left, int padW_right,
+			ZQ_CNN_Tensor4D& output, void** buffer = 0, __int64* buffer_len = 0)
+		{
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int filter_N = filters.GetN();
+			int filter_H = filters.GetH();
+			int filter_W = filters.GetW();
+			int filter_C = filters.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int need_H = ((in_H - 1)*strideH + 1 - (filter_H - 1)*dilation_H - 1 + (padH_top + padH_bottom) + 1);
+			int need_W = ((in_W - 1)*strideW + 1 - (filter_W - 1)*dilation_W - 1 + (padW_left + padW_right) + 1);
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			if (filter_C != in_C)
+				return false;
+
+			int need_N = in_N;
+			int need_C = filter_N;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			
+			int in_sliceStep = input.GetSliceStep();
+			int in_widthStep = input.GetWidthStep();
+			int in_pixStep = input.GetPixelStep();
+			int filter_sliceStep = filters.GetSliceStep();
+			int filter_widthStep = filters.GetWidthStep();
+			int filter_pixStep = filters.GetPixelStep();
+			int out_sliceStep = output.GetSliceStep();
+			int out_widthStep = output.GetWidthStep();
+			int out_pixStep = output.GetPixelStep();
+			float* in_firstPixelData = input.GetFirstPixelPtr();
+			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
+			float* out_firstPixelData = output.GetFirstPixelPtr();
+
+			int align_mode = __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType()));
+			if (in_C == 1)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+			else if (in_C <= 4)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+			else if (in_C <= 8)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			//align_mode = ZQ_CNN_Tensor4D::ALIGN_0;
+			//output.Reset();
+
+			_deconvolution_with_padding(align_mode, in_firstPixelData, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, padH_top, padH_bottom, padW_left, padW_right,
+				buffer, buffer_len);
+
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+			return true;
+		}
+
+		static bool ConvolutionWithBias(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, const ZQ_CNN_Tensor4D& bias,
+			int strideH, int strideW, int dilation_H, int dilation_W, int padH_top, int padH_bottom, int padW_left, int padW_right, 
+			ZQ_CNN_Tensor4D& output,
+			void** buffer = 0, __int64* buffer_len = 0)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int filter_N = filters.GetN();
+			int filter_H = filters.GetH();
+			int filter_W = filters.GetW();
+			int filter_C = filters.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int bias_C = bias.GetC();
+			int need_H = (in_H - (filter_H - 1)*dilation_H - 1 + (padH_top + padH_bottom)) / strideH + 1;
+			int need_W = (in_W - (filter_W - 1)*dilation_W - 1 + (padW_left + padW_right)) / strideW + 1;
 			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
 				|| need_H < 0  || need_W < 0)
 			{
@@ -54,9 +549,9 @@ namespace ZQ
 				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
 			}
 
-			if (padH != 0 || padW != 0)
+			if (padH_top != 0 || padH_bottom != 0 || padW_left != 0 || padW_right != 0)
 			{
-				if (!input.Padding(padW, padH, 0))
+				if (!input.Padding(padW_left, padW_right, padH_top, padH_bottom, 0))
 					return false;
 			}
 
@@ -69,7 +564,7 @@ namespace ZQ
 			int out_sliceStep = output.GetSliceStep();
 			int out_widthStep = output.GetWidthStep();
 			int out_pixStep = output.GetPixelStep();
-			float* in_firstPixelData = input.GetFirstPixelPtr() - padH*in_widthStep - padW*in_pixStep;
+			float* in_firstPixelData = input.GetFirstPixelPtr() - padH_top*in_widthStep - padW_left*in_pixStep;
 			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
 			float* out_firstPixelData = output.GetFirstPixelPtr();
 			const float* bias_firstPixelData = bias.GetFirstPixelPtr();
@@ -81,6 +576,9 @@ namespace ZQ
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 			else if (in_C <= 8)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -90,10 +588,11 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
-			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
+#endif
+			//align_mode = ZQ_CNN_Tensor4D::ALIGN_0;
 			//output.Reset();
 
-			_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH << 1), in_W + (padW << 1), in_C, in_pixStep, in_widthStep, in_sliceStep,
+			_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH_top+padH_bottom), in_W + (padW_left+padW_right), in_C, in_pixStep, in_widthStep, in_sliceStep,
 				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
 				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, buffer, buffer_len);
 			//printf("out_data = %f\n", out_firstPixelData[0]);
@@ -106,7 +605,198 @@ namespace ZQ
 			return true;
 		}
 
-		static bool Convolution(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, int strideH, int strideW, int dilation_H, int dilation_W, int padH, int padW,
+		static bool ConvolutionWithBiasPReLU(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, const ZQ_CNN_Tensor4D& bias,
+			const ZQ_CNN_Tensor4D& slope, int strideH, int strideW, int dilation_H, int dilation_W, 
+			int padH_top, int padH_bottom, int padW_left, int padW_right, ZQ_CNN_Tensor4D& output,
+			void** buffer = 0, __int64* buffer_len = 0)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int filter_N = filters.GetN();
+			int filter_H = filters.GetH();
+			int filter_W = filters.GetW();
+			int filter_C = filters.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int bias_C = bias.GetC();
+			int slope_C = slope.GetC();
+			int need_H = (in_H - (filter_H - 1)*dilation_H - 1 + (padH_top+padH_bottom)) / strideH + 1;
+			int need_W = (in_W - (filter_W - 1)*dilation_W - 1 + (padW_left+padW_right)) / strideW + 1;
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			if (filter_C != in_C || filter_N != bias_C || filter_N != slope_C)
+				return false;
+
+			int need_N = in_N;
+
+			int need_C = filter_N;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			if (padH_top != 0 || padH_bottom != 0 || padW_left != 0 || padW_right != 0)
+			{
+				if (!input.Padding(padW_left, padW_right, padH_top, padH_bottom, 0))
+					return false;
+			}
+
+			int in_sliceStep = input.GetSliceStep();
+			int in_widthStep = input.GetWidthStep();
+			int in_pixStep = input.GetPixelStep();
+			int filter_sliceStep = filters.GetSliceStep();
+			int filter_widthStep = filters.GetWidthStep();
+			int filter_pixStep = filters.GetPixelStep();
+			int out_sliceStep = output.GetSliceStep();
+			int out_widthStep = output.GetWidthStep();
+			int out_pixStep = output.GetPixelStep();
+			float* in_firstPixelData = input.GetFirstPixelPtr() - padH_top*in_widthStep - padW_left*in_pixStep;
+			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
+			float* out_firstPixelData = output.GetFirstPixelPtr();
+			const float* bias_firstPixelData = bias.GetFirstPixelPtr();
+			const float* slope_firstPixelData = slope.GetFirstPixelPtr();
+
+			int align_mode = __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType()));
+			if (in_C == 1)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+			else if (in_C <= 4)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+			else if (in_C <= 8)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
+			//output.Reset();
+
+			_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH_top+padH_bottom), in_W + (padW_left+padW_right), in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, buffer, buffer_len);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+			_addbias_prelu(__min(__min(bias.GetAlignType(),slope.GetAlignType()), align_mode), out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep,
+				bias_firstPixelData, slope_firstPixelData);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool ConvolutionWithPReLU(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters,
+			const ZQ_CNN_Tensor4D& slope, int strideH, int strideW, int dilation_H, int dilation_W, 
+			int padH_top, int padH_bottom, int padW_left, int padW_right, ZQ_CNN_Tensor4D& output,
+			void** buffer = 0, __int64* buffer_len = 0)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int filter_N = filters.GetN();
+			int filter_H = filters.GetH();
+			int filter_W = filters.GetW();
+			int filter_C = filters.GetC();
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			int slope_C = slope.GetC();
+			int need_H = (in_H - (filter_H - 1)*dilation_H - 1 + (padH_top+padH_bottom)) / strideH + 1;
+			int need_W = (in_W - (filter_W - 1)*dilation_W - 1 + (padW_left+padW_right)) / strideW + 1;
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| need_H < 0 || need_W < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			if (filter_C != in_C || filter_N != slope_C)
+				return false;
+
+			int need_N = in_N;
+
+			int need_C = filter_N;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			if (padH_top != 0 || padH_bottom != 0|| padW_left != 0 || padW_right != 0)
+			{
+				if (!input.Padding(padW_left, padW_right, padH_top, padH_bottom, 0))
+					return false;
+			}
+
+			int in_sliceStep = input.GetSliceStep();
+			int in_widthStep = input.GetWidthStep();
+			int in_pixStep = input.GetPixelStep();
+			int filter_sliceStep = filters.GetSliceStep();
+			int filter_widthStep = filters.GetWidthStep();
+			int filter_pixStep = filters.GetPixelStep();
+			int out_sliceStep = output.GetSliceStep();
+			int out_widthStep = output.GetWidthStep();
+			int out_pixStep = output.GetPixelStep();
+			float* in_firstPixelData = input.GetFirstPixelPtr() - padH_top*in_widthStep - padW_left*in_pixStep;
+			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
+			float* out_firstPixelData = output.GetFirstPixelPtr();
+			const float* slope_firstPixelData = slope.GetFirstPixelPtr();
+
+			int align_mode = __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType()));
+			if (in_C == 1)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+			else if (in_C <= 4)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+			else if (in_C <= 8)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
+			//output.Reset();
+
+			_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH_top+padH_bottom), in_W + (padW_left+padW_right), in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, buffer, buffer_len);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+			_prelu(__min(slope.GetAlignType(), align_mode), out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep,
+				slope_firstPixelData);
+			//printf("out_data = %f\n", out_firstPixelData[0]);
+
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool Convolution(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, int strideH, int strideW, int dilation_H, int dilation_W, 
+			int padH_top, int padH_bottom, int padW_left, int padW_right,
 			ZQ_CNN_Tensor4D& output, void** buffer = 0, __int64* buffer_len = 0)
 		{
 			int in_N = input.GetN();
@@ -121,8 +811,8 @@ namespace ZQ
 			int out_H = output.GetH();
 			int out_W = output.GetW();
 			int out_C = output.GetC();
-			int need_H = (in_H - (filter_H - 1)*dilation_H - 1 + (padH << 1)) / strideH + 1;
-			int need_W = (in_W - (filter_W - 1)*dilation_W - 1 + (padW << 1)) / strideW + 1;
+			int need_H = (in_H - (filter_H - 1)*dilation_H - 1 + (padH_top+padH_bottom)) / strideH + 1;
+			int need_W = (in_W - (filter_W - 1)*dilation_W - 1 + (padW_left+padW_right)) / strideW + 1;
 			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
 				|| need_H < 0 || need_W < 0)
 			{
@@ -139,9 +829,9 @@ namespace ZQ
 				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
 			}
 
-			if (padH != 0 || padW != 0)
+			if (padH_top != 0 || padH_bottom != 0 || padW_left != 0 || padW_right != 0)
 			{
-				if (!input.Padding(padW, padH, 0))
+				if (!input.Padding(padW_left, padW_right, padH_top, padH_bottom, 0))
 					return false;
 			}
 			
@@ -154,7 +844,7 @@ namespace ZQ
 			int out_sliceStep = output.GetSliceStep();
 			int out_widthStep = output.GetWidthStep();
 			int out_pixStep = output.GetPixelStep();
-			float* in_firstPixelData = input.GetFirstPixelPtr() - padH*in_widthStep - padW*in_pixStep;
+			float* in_firstPixelData = input.GetFirstPixelPtr() - padH_top*in_widthStep - padW_left*in_pixStep;
 			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
 			float* out_firstPixelData = output.GetFirstPixelPtr();
 
@@ -165,6 +855,9 @@ namespace ZQ
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 			else if (in_C <= 8)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -174,10 +867,11 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
+#endif
 			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
 			//output.Reset();
 			
-			_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH << 1), in_W + (padW << 1), in_C, in_pixStep, in_widthStep, in_sliceStep,
+			_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH_top+padH_bottom), in_W + (padW_left+padW_right), in_C, in_pixStep, in_widthStep, in_sliceStep,
 				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilation_H, dilation_W,
 				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, buffer, buffer_len);
 
@@ -186,9 +880,8 @@ namespace ZQ
 		}
 
 		static bool DepthwiseConvolutionWithBias(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, const ZQ_CNN_Tensor4D& bias,
-			int strideH, int strideW, int padH, int padW, ZQ_CNN_Tensor4D& output)
+			int strideH, int strideW, int dilate_H, int dilate_W, int padH_top, int padH_bottom, int padW_left, int padW_right, ZQ_CNN_Tensor4D& output)
 		{
-			//num_threads = 4;
 			double t1 = omp_get_wtime();
 			int in_N = input.GetN();
 			int in_H = input.GetH();
@@ -198,13 +891,15 @@ namespace ZQ
 			int filter_H = filters.GetH();
 			int filter_W = filters.GetW();
 			int filter_C = filters.GetC();
+			int dilate_filter_H = dilate_H * (filter_H - 1) + 1;
+			int dilate_filter_W = dilate_W * (filter_W - 1) + 1;
 			int out_N = output.GetN();
 			int out_H = output.GetH();
 			int out_W = output.GetW();
 			int out_C = output.GetC();
 			float bias_C = bias.GetC();
 			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
-				|| (in_H - filter_H + (padH << 1)) < 0 || (in_W - filter_W + (padW << 1)) < 0)
+				|| (in_H - dilate_filter_H + (padH_top+padH_bottom)) < 0 || (in_W - dilate_filter_W + (padW_left+padW_right)) < 0)
 			{
 				output.ChangeSize(0, 0, 0, 0, 0, 0);
 				return true;
@@ -213,17 +908,17 @@ namespace ZQ
 				return false;
 
 			int need_N = in_N;
-			int need_H = (in_H - filter_H + (padH << 1)) / strideH + 1;
-			int need_W = (in_W - filter_W + (padW << 1)) / strideW + 1;
+			int need_H = (in_H - dilate_filter_H + (padH_top+padH_bottom)) / strideH + 1;
+			int need_W = (in_W - dilate_filter_W + (padW_left+padW_right)) / strideW + 1;
 			int need_C = in_C;
 			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
 			{
 				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
 			}
 
-			if (padH != 0 || padW != 0)
+			if (padH_top != 0 || padH_bottom != 0 || padW_left != 0 || padW_right != 0)
 			{
-				if (!input.Padding(padW, padH, 0))
+				if (!input.Padding(padW_left, padW_right, padH_top, padH_bottom, 0))
 					return false;
 			}
 
@@ -236,18 +931,21 @@ namespace ZQ
 			int out_sliceStep = output.GetSliceStep();
 			int out_widthStep = output.GetWidthStep();
 			int out_pixStep = output.GetPixelStep();
-			float* in_firstPixelData = input.GetFirstPixelPtr() - padH*in_widthStep - padW*in_pixStep;
+			float* in_firstPixelData = input.GetFirstPixelPtr() - padH_top*in_widthStep - padW_left*in_pixStep;
 			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
 			float* out_firstPixelData = output.GetFirstPixelPtr();
 			const float* bias_firstPixelData = bias.GetFirstPixelPtr();
 
-			int align_mode = __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType()));
+			int align_mode = __min(bias.GetAlignType(), __min((int)input.GetAlignType(), __min((int)filters.GetAlignType(), (int)output.GetAlignType())));
 			if (in_C == 1)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 			else if (in_C <= 4)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 			else if (in_C <= 8)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -257,21 +955,109 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
-			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
-			//output.Reset();
-			_depthwise_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH << 1), in_W + (padW << 1), in_C, in_pixStep, in_widthStep, in_sliceStep,
-				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW,
-				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep);
-			_addbias(__min(bias.GetAlignType(), align_mode), out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep,
-				bias_firstPixelData);
+#endif
+			_depthwise_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH_top+padH_bottom), in_W + (padW_left+padW_right), in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW,dilate_H,dilate_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, bias_firstPixelData, NULL);
+		
+			double t2 = omp_get_wtime();
+			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
+			return true;
+		}
+
+		static bool DepthwiseConvolutionWithBiasPReLU(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, const ZQ_CNN_Tensor4D& bias,
+			const ZQ_CNN_Tensor4D& prelu_slope, int strideH, int strideW, int dilate_H, int dilate_W, 
+			int padH_top, int padH_bottom, int padW_left, int padW_right, ZQ_CNN_Tensor4D& output)
+		{
+			double t1 = omp_get_wtime();
+			int in_N = input.GetN();
+			int in_H = input.GetH();
+			int in_W = input.GetW();
+			int in_C = input.GetC();
+			int filter_N = filters.GetN();
+			int filter_H = filters.GetH();
+			int filter_W = filters.GetW();
+			int filter_C = filters.GetC();
+			int dilate_filter_H = dilate_H * (filter_H - 1) + 1;
+			int dilate_filter_W = dilate_W * (filter_W - 1) + 1;
+			int out_N = output.GetN();
+			int out_H = output.GetH();
+			int out_W = output.GetW();
+			int out_C = output.GetC();
+			float bias_C = bias.GetC();
+			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
+				|| (in_H - dilate_filter_H + (padH_top+padH_bottom)) < 0 || (in_W - dilate_filter_W + (padW_left+padW_right)) < 0)
+			{
+				output.ChangeSize(0, 0, 0, 0, 0, 0);
+				return true;
+			}
+			if (filter_C != in_C || filter_N != 1)
+				return false;
+
+			int need_N = in_N;
+			int need_H = (in_H - dilate_filter_H + (padH_top+padH_bottom)) / strideH + 1;
+			int need_W = (in_W - dilate_filter_W + (padW_left+padW_right)) / strideW + 1;
+			int need_C = in_C;
+			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
+			{
+				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
+			}
+
+			if (padH_top != 0 || padH_bottom != 0 || padW_left != 0 || padW_right != 0)
+			{
+				if (!input.Padding(padW_left, padW_right, padH_top, padH_bottom, 0))
+					return false;
+			}
+
+			int in_sliceStep = input.GetSliceStep();
+			int in_widthStep = input.GetWidthStep();
+			int in_pixStep = input.GetPixelStep();
+			int filter_sliceStep = filters.GetSliceStep();
+			int filter_widthStep = filters.GetWidthStep();
+			int filter_pixStep = filters.GetPixelStep();
+			int out_sliceStep = output.GetSliceStep();
+			int out_widthStep = output.GetWidthStep();
+			int out_pixStep = output.GetPixelStep();
+			float* in_firstPixelData = input.GetFirstPixelPtr() - padH_top*in_widthStep - padW_left*in_pixStep;
+			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
+			float* out_firstPixelData = output.GetFirstPixelPtr();
+			const float* bias_firstPixelData = bias.GetFirstPixelPtr();
+			const float* slope_data = prelu_slope.GetFirstPixelPtr();
+
+			int align_mode = __min((int)prelu_slope.GetAlignType(), (int)bias.GetAlignType());
+			align_mode = __min(align_mode, (int)input.GetAlignType());
+			align_mode = __min(align_mode, (int)filters.GetAlignType());
+			align_mode = __min(align_mode, (int)output.GetAlignType());
+			if (in_C == 1)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+			else if (in_C <= 4)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+			else if (in_C <= 8)
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			_depthwise_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH_top+padH_bottom), in_W + (padW_left+padW_right), in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW,dilate_H,dilate_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, bias_firstPixelData, slope_data);
 
 			double t2 = omp_get_wtime();
 			//printf("utils:conv: %.3f ms\n", (t2 - t1) * 1000);
 			return true;
 		}
 
-		static bool DepthwiseConvolution(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, int strideH, int strideW, int padH, int padW, 
-			ZQ_CNN_Tensor4D& output)
+		static bool DepthwiseConvolution(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& filters, int strideH, int strideW, int dilate_H, int dilate_W,
+			int padH_top, int padH_bottom, int padW_left, int padW_right, ZQ_CNN_Tensor4D& output)
 		{
 			//num_threads = 1;
 			int in_N = input.GetN();
@@ -282,12 +1068,14 @@ namespace ZQ
 			int filter_H = filters.GetH();
 			int filter_W = filters.GetW();
 			int filter_C = filters.GetC();
+			int dilate_filter_H = dilate_H * (filter_H - 1) + 1;
+			int dilate_filter_W = dilate_W * (filter_W - 1) + 1;
 			int out_N = output.GetN();
 			int out_H = output.GetH();
 			int out_W = output.GetW();
 			int out_C = output.GetC();
 			if (in_N <= 0 || in_H <= 0 || in_W <= 0 || in_C == 0
-				|| (in_H - filter_H + (padH << 1)) < 0 || (in_W - filter_W + (padW << 1)) < 0)
+				|| (in_H - dilate_filter_H + (padH_top+padH_bottom)) < 0 || (in_W - dilate_filter_W + (padW_left+padW_right)) < 0)
 			{
 				output.ChangeSize(0, 0, 0, 0, 0, 0);
 				return true;
@@ -296,17 +1084,17 @@ namespace ZQ
 				return false;
 
 			int need_N = in_N;
-			int need_H = (in_H - filter_H + (padH << 1)) / strideH + 1;
-			int need_W = (in_W - filter_W + (padW << 1)) / strideW + 1;
+			int need_H = (in_H - dilate_filter_H + (padH_top+padH_bottom)) / strideH + 1;
+			int need_W = (in_W - dilate_filter_W + (padW_left+padW_right)) / strideW + 1;
 			int need_C = in_C;
 			if (out_N != need_N || out_H != need_H || out_W != need_W || out_C != need_C)
 			{
 				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
 			}
 
-			if (padH != 0 || padW != 0)
+			if (padH_top != 0 || padH_bottom != 0 || padW_left != 0 || padW_right != 0)
 			{
-				if (!input.Padding(padW, padH, 0))
+				if (!input.Padding(padW_left, padW_right, padH_top, padH_bottom, 0))
 					return false;
 			}
 
@@ -319,7 +1107,7 @@ namespace ZQ
 			int out_sliceStep = output.GetSliceStep();
 			int out_widthStep = output.GetWidthStep();
 			int out_pixStep = output.GetPixelStep();
-			float* in_firstPixelData = input.GetFirstPixelPtr() - padH*in_widthStep - padW*in_pixStep;
+			float* in_firstPixelData = input.GetFirstPixelPtr() - padH_top*in_widthStep - padW_left*in_pixStep;
 			const float* filter_firstPixelData = filters.GetFirstPixelPtr();
 			float* out_firstPixelData = output.GetFirstPixelPtr();
 
@@ -330,6 +1118,9 @@ namespace ZQ
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 			else if (in_C <= 8)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -339,11 +1130,12 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
+#endif
 			//align_mode = ZQ_CNN_Tensor4D::ALIGN_128bit;
 			//output.Reset();
-			_depthwise_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH << 1), in_W + (padW << 1), in_C, in_pixStep, in_widthStep, in_sliceStep,
-				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW,
-				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep);
+			_depthwise_convolution_nopadding(align_mode, in_firstPixelData, in_N, in_H + (padH_top+padH_bottom), in_W + (padW_left+padW_right), in_C, in_pixStep, in_widthStep, in_sliceStep,
+				filter_firstPixelData, filter_N, filter_H, filter_W, filter_C, filter_pixStep, filter_widthStep, filter_sliceStep, strideH, strideW, dilate_H, dilate_W,
+				out_firstPixelData, need_N, need_H, need_W, need_C, out_pixStep, out_widthStep, out_sliceStep, NULL, NULL);
 
 			return true;
 		}
@@ -403,6 +1195,9 @@ namespace ZQ
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 			else if (in_C <= 8)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -411,6 +1206,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			//align_mode = ZQ_CNN_Tensor4D::ALIGN_0;
 			_inner_product(align_mode, in_firstPixelData, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep,
@@ -476,6 +1272,9 @@ namespace ZQ
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 			else if (in_C <= 8)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -484,6 +1283,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			//align_mode = ZQ_CNN_Tensor4D::ALIGN_0;
 			_inner_product(align_mode, in_firstPixelData, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep,
@@ -493,8 +1293,8 @@ namespace ZQ
 			return true;
 		}
 
-		static void MaxPooling(const ZQ_CNN_Tensor4D &input, ZQ_CNN_Tensor4D &output, int kernel_H, int kernel_W, 
-			int stride_H, int stride_W, bool global_pool)
+		static void MaxPooling(ZQ_CNN_Tensor4D &input, ZQ_CNN_Tensor4D &output, int kernel_H, int kernel_W, 
+			int stride_H, int stride_W, int pad_H_top, int pad_H_bottom, int pad_W_left, int pad_W_right, bool global_pool)
 		{
 			int in_N = input.GetN();
 			int in_H = input.GetH();
@@ -514,8 +1314,8 @@ namespace ZQ
 			}
 			else
 			{
-				need_W = ceil((float)(in_W - kernel_W) / stride_W + 1);
-				need_H = ceil((float)(in_H - kernel_H) / stride_H + 1);
+				need_W = ceil((float)(in_W + pad_W_left + pad_W_right - kernel_W) / stride_W + 1);
+				need_H = ceil((float)(in_H + pad_H_top + pad_H_bottom - kernel_H) / stride_H + 1);
 			}
 			
 			if (need_W <= 0 || need_H <= 0)
@@ -524,7 +1324,7 @@ namespace ZQ
 				return ;
 			}
 
-			bool suredivided = (in_H - kernel_H) % stride_H == 0 && (in_W - kernel_W) % stride_W == 0;
+			bool suredivided = (in_H + pad_H_top + pad_H_bottom - kernel_H) % stride_H == 0 && (in_W + pad_W_left + pad_W_right - kernel_W) % stride_W == 0;
 			if (output.GetN() != need_N || output.GetH() != need_H || output.GetW() != need_W || output.GetC() != need_C)
 				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
 
@@ -534,10 +1334,12 @@ namespace ZQ
 			int out_sliceStep = output.GetSliceStep();
 			int out_widthStep = output.GetWidthStep();
 			int out_pixStep = output.GetPixelStep();
-			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
 
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -547,13 +1349,37 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
-			_maxpooling(align_mode, in_data, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
-				out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+#endif
+
+			if (global_pool)
+			{
+				const float* in_data = input.GetFirstPixelPtr();
+
+				_maxpooling(align_mode, in_data, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
+					out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+			}
+			else
+			{
+				if (pad_H_top == 0 && pad_H_bottom == 0 && pad_W_left == 0 && pad_W_right == 0)
+				{
+					const float* in_data = input.GetFirstPixelPtr();
+
+					_maxpooling(align_mode, in_data, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
+						out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+				}
+				else
+				{
+					input.Padding(pad_W_left, pad_W_right, pad_H_top, pad_H_bottom, 0);
+					const float* in_data = input.GetFirstPixelPtr() - pad_H_top*in_widthStep - pad_W_left*in_pixStep;
+					_maxpooling(align_mode, in_data, in_N, in_H+pad_H_top+pad_H_bottom, in_W+pad_W_left+pad_W_right, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
+						out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+				}
+			}
 
 		}
 
-		static void AVGPooling(const ZQ_CNN_Tensor4D &input, ZQ_CNN_Tensor4D &output, int kernel_H, int kernel_W,
-			int stride_H, int stride_W, bool global_pool)
+		static void AVGPooling(ZQ_CNN_Tensor4D &input, ZQ_CNN_Tensor4D &output, int kernel_H, int kernel_W,
+			int stride_H, int stride_W, int pad_H_top, int pad_H_bottom, int pad_W_left, int pad_W_right, bool global_pool)
 		{
 			int in_N = input.GetN();
 			int in_H = input.GetH();
@@ -573,8 +1399,8 @@ namespace ZQ
 			}
 			else
 			{
-				need_W = ceil((float)(in_W - kernel_W) / stride_W + 1);
-				need_H = ceil((float)(in_H - kernel_H) / stride_H + 1);
+				need_W = ceil((float)(in_W + pad_W_left + pad_W_right - kernel_W) / stride_W + 1);
+				need_H = ceil((float)(in_H + pad_H_top + pad_H_bottom - kernel_H) / stride_H + 1);
 			}
 
 			if (need_W <= 0 || need_H <= 0)
@@ -583,7 +1409,7 @@ namespace ZQ
 				return;
 			}
 
-			bool suredivided = (in_H - kernel_H) % stride_H == 0 && (in_W - kernel_W) % stride_W == 0;
+			bool suredivided = (in_H + pad_H_top + pad_H_bottom - kernel_H) % stride_H == 0 && (in_W + pad_W_left + pad_W_right - kernel_W) % stride_W == 0;
 			if (output.GetN() != need_N || output.GetH() != need_H || output.GetW() != need_W || output.GetC() != need_C)
 				output.ChangeSize(need_N, need_H, need_W, need_C, 0, 0);
 
@@ -593,10 +1419,12 @@ namespace ZQ
 			int out_sliceStep = output.GetSliceStep();
 			int out_widthStep = output.GetWidthStep();
 			int out_pixStep = output.GetPixelStep();
-			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
 
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -606,9 +1434,70 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
-			_avgpooling(align_mode, in_data, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
-				out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+#endif
+
+			if (global_pool)
+			{
+				const float* in_data = input.GetFirstPixelPtr();
+
+				_avgpooling(align_mode, in_data, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
+					out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+			}
+			else
+			{
+				if (pad_H_top == 0 && pad_H_bottom == 0 && pad_W_left == 0 && pad_W_right == 0)
+				{
+					const float* in_data = input.GetFirstPixelPtr();
+
+					_avgpooling(align_mode, in_data, in_N, in_H, in_W, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
+						out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+				}
+				else
+				{
+					input.Padding(pad_W_left, pad_W_right, pad_H_top, pad_H_bottom, 0);
+					const float* in_data = input.GetFirstPixelPtr() - pad_H_top*in_widthStep - pad_W_left*in_pixStep;
+					_avgpooling(align_mode, in_data, in_N, in_H + pad_H_top + pad_H_bottom, in_W + pad_W_left + pad_W_right, in_C, in_pixStep, in_widthStep, in_sliceStep, kernel_H, kernel_W, stride_H, stride_W,
+						out_data, need_H, need_W, out_pixStep, out_widthStep, out_sliceStep);
+				}
+			}
+
 		}
+
+		static bool AddBiasPReLU(ZQ_CNN_Tensor4D &input, const ZQ_CNN_Tensor4D& bias, const ZQ_CNN_Tensor4D& slope)
+		{
+			int N = input.GetN();
+			int H = input.GetH();
+			int W = input.GetW();
+			int C = input.GetC();
+			if (N <= 0 || H <= 0 || W <= 0 || C <= 0)
+				return true;
+			if (bias.GetC() != C || slope.GetC() != C)
+				return false;
+			float* data = input.GetFirstPixelPtr();
+			const float* bias_Data = bias.GetFirstPixelPtr();
+			const float* slope_Data = slope.GetFirstPixelPtr();
+			int pixelStep = input.GetPixelStep();
+			int widthStep = input.GetWidthStep();
+			int sliceStep = input.GetSliceStep();
+
+			int align_mode = __min(input.GetAlignType(), __min(bias.GetAlignType(), slope.GetAlignType()));
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			_addbias_prelu(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, bias_Data, slope_Data);
+			return true;
+		}
+
 
 		static bool PReLU(ZQ_CNN_Tensor4D &input, const ZQ_CNN_Tensor4D& slope)
 		{
@@ -627,6 +1516,9 @@ namespace ZQ
 			int sliceStep = input.GetSliceStep();
 
 			int align_mode = __min(input.GetAlignType(), slope.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -635,6 +1527,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_prelu(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, slope_Data);
 			return true;
@@ -655,6 +1548,9 @@ namespace ZQ
 			int sliceStep = input.GetSliceStep();
 
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -664,7 +1560,39 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
+#endif
 			_relu(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, slope);
+		}
+
+		static void ReLU6(ZQ_CNN_Tensor4D &input)
+		{
+			//num_threads = 2;
+			int N = input.GetN();
+			int H = input.GetH();
+			int W = input.GetW();
+			int C = input.GetC();
+			if (N <= 0 || H <= 0 || W <= 0 || C <= 0)
+				return;
+			float* data = input.GetFirstPixelPtr();
+			int pixelStep = input.GetPixelStep();
+			int widthStep = input.GetWidthStep();
+			int sliceStep = input.GetSliceStep();
+
+			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+#endif
+			_relu6(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep);
 		}
 
 		static void Dropout(ZQ_CNN_Tensor4D &input, float dropout_ratio, int num_threads = 1)
@@ -687,6 +1615,9 @@ namespace ZQ
 				float* data = input.GetFirstPixelPtr();
 
 				int align_mode = input.GetAlignType();
+#if __ARM_NEON
+				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -695,6 +1626,7 @@ namespace ZQ
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 				_dropout(align_mode, data, N, H, W, C, pixStep, widthStep, sliceStep, dropout_ratio);
 			}
@@ -723,6 +1655,9 @@ namespace ZQ
 			else if (C <= 32)
 				align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 			*/
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -731,6 +1666,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_softmax(align_mode, axis, data, N, H, W, C, pixStep, widthStep, sliceStep);
 			//printf("data = %f\n", data[0]);
@@ -758,6 +1694,9 @@ namespace ZQ
 			int sliceStep = input.GetSliceStep();
 
 			int align_mode = __min(input.GetAlignType(), __min(mean.GetAlignType(), __min(var.GetAlignType(), __min(slope.GetAlignType(), bias.GetAlignType()))));
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -766,6 +1705,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_batchnorm_scalebias(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, mean_data, var_data, 
 				slope_data, bias_data, eps);
@@ -791,6 +1731,9 @@ namespace ZQ
 			int sliceStep = input.GetSliceStep();
 
 			int align_mode = __min(input.GetAlignType(), __min(mean.GetAlignType(), var.GetAlignType()));
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -799,6 +1742,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_batchnorm(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, mean_data, var_data, eps);
 			return true;
@@ -915,6 +1859,9 @@ namespace ZQ
 			int sliceStep = input.GetSliceStep();
 
 			int align_mode = __min(input.GetAlignType(), __min(b.GetAlignType(),a.GetAlignType()));
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -923,6 +1870,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_batchnorm_b_a(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, b_data, a_data);
 			return true;
@@ -936,7 +1884,7 @@ namespace ZQ
 			int C = input.GetC();
 			if (N <= 0 || H <= 0 || W <= 0 || C <= 0)
 				return true;
-			if (scale.GetC() != C || scale.GetC() != C)
+			if (scale.GetC() != C || bias.GetC() != C)
 				return false;
 			float* data = input.GetFirstPixelPtr();
 			const float* scale_data = scale.GetFirstPixelPtr();
@@ -976,6 +1924,9 @@ namespace ZQ
 			int sliceStep = input.GetSliceStep();
 
 			int align_mode = __min(input.GetAlignType(), scale.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -985,7 +1936,38 @@ namespace ZQ
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
 #endif
+#endif
 			_scalebias(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, scale_data, NULL);
+			return true;
+		}
+
+		static bool AddBias(ZQ_CNN_Tensor4D& input, const ZQ_CNN_Tensor4D& bias)
+		{
+			int N = input.GetN();
+			int H = input.GetH();
+			int W = input.GetW();
+			int C = input.GetC();
+			if (N <= 0 || H <= 0 || W <= 0 || C <= 0)
+				return true;
+			if (bias.GetC() != C)
+				return false;
+			float* data = input.GetFirstPixelPtr();
+			const float* bias_data = bias.GetFirstPixelPtr();
+			int pixelStep = input.GetPixelStep();
+			int widthStep = input.GetWidthStep();
+			int sliceStep = input.GetSliceStep();
+
+			int align_mode = __min(input.GetAlignType(), bias.GetAlignType());
+#if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
+#elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_SSE
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
+			_addbias(align_mode, data, N, H, W, C, pixelStep, widthStep, sliceStep, bias_data);
 			return true;
 		}
 
@@ -1025,6 +2007,9 @@ namespace ZQ
 			int align_mode = output.GetAlignType();
 			for (int i = 0; i < in_num; i++)
 				align_mode = __min(align_mode, input[i]->GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1033,6 +2018,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_eltwise_sum(align_mode, in_num, &in_tensor_data[0], N, H, W, C, &in_pixStep[0], &in_widthStep[0], &in_sliceStep[0], out_data, out_pixStep, out_widthStep,
 				out_sliceStep);
@@ -1077,6 +2063,9 @@ namespace ZQ
 			int align_mode = output.GetAlignType();
 			for (int i = 0; i < in_num; i++)
 				align_mode = __min(align_mode, input[i]->GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1085,6 +2074,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_eltwise_sum_with_weight(align_mode, in_num, &in_tensor_data[0], &weight[0], N, H, W, C, &in_pixStep[0], &in_widthStep[0], &in_sliceStep[0], out_data, out_pixStep, out_widthStep,
 				out_sliceStep);
@@ -1127,6 +2117,9 @@ namespace ZQ
 			int align_mode = output.GetAlignType();
 			for (int i = 0; i < in_num; i++)
 				align_mode = __min(align_mode, input[i]->GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1135,6 +2128,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_eltwise_mul(align_mode, in_num, &in_tensor_data[0], N, H, W, C, &in_pixStep[0], &in_widthStep[0], &in_sliceStep[0], out_data, out_pixStep, out_widthStep,
 				out_sliceStep);
@@ -1177,6 +2171,9 @@ namespace ZQ
 			int align_mode = output.GetAlignType();
 			for (int i = 0; i < in_num; i++)
 				align_mode = __min(align_mode, input[i]->GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1185,6 +2182,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_eltwise_max(align_mode, in_num, &in_tensor_data[0], N, H, W, C, &in_pixStep[0], &in_widthStep[0], &in_sliceStep[0], out_data, out_pixStep, out_widthStep, 
 				out_sliceStep);
@@ -1224,6 +2222,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1232,6 +2233,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_reduction_sum(align_mode, in_data, N, H, W, C, axis,keepdims, in_pixStep, in_widthStep, in_sliceStep, 
 				out_data, out_pixStep, out_widthStep, out_sliceStep);
@@ -1271,6 +2273,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1279,6 +2284,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_reduction_mean(align_mode, in_data, N, H, W, C, axis, keepdims, in_pixStep, in_widthStep, in_sliceStep,
 				out_data, out_pixStep, out_widthStep, out_sliceStep);
@@ -1297,6 +2303,9 @@ namespace ZQ
 			float* in_data = input.GetFirstPixelPtr();
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1305,6 +2314,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_sqrt(align_mode, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
 			return true;
@@ -1323,6 +2333,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1331,6 +2344,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
@@ -1349,6 +2363,9 @@ namespace ZQ
 				return true;
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1357,6 +2374,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			float* in_data = input.GetFirstPixelPtr();
 			_scalaroperation_add(align_mode, scalar, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
@@ -1376,6 +2394,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1384,6 +2405,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
@@ -1402,6 +2424,9 @@ namespace ZQ
 				return true;
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1410,6 +2435,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			float* in_data = input.GetFirstPixelPtr();
 			_scalaroperation_mul(align_mode, scalar, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
@@ -1429,6 +2455,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1437,6 +2466,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
@@ -1455,6 +2485,9 @@ namespace ZQ
 				return true;
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1463,6 +2496,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			float* in_data = input.GetFirstPixelPtr();
 			_scalaroperation_max(align_mode, scalar, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
@@ -1482,6 +2516,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1490,6 +2527,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
@@ -1508,6 +2546,9 @@ namespace ZQ
 				return true;
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1516,6 +2557,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			float* in_data = input.GetFirstPixelPtr();
 			_scalaroperation_min(align_mode, scalar, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
@@ -1535,6 +2577,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1543,6 +2588,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
@@ -1561,6 +2607,9 @@ namespace ZQ
 				return true;
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1569,6 +2618,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			float* in_data = input.GetFirstPixelPtr();
 			_scalaroperation_pow(align_mode, scalar, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
@@ -1588,6 +2638,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1596,6 +2649,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
@@ -1614,6 +2668,9 @@ namespace ZQ
 				return true;
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1622,6 +2679,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			float* in_data = input.GetFirstPixelPtr();
 			_scalaroperation_rdiv(align_mode, scalar, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
@@ -1641,6 +2699,9 @@ namespace ZQ
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int out_pixStep = output.GetPixelStep(), out_widthStep = output.GetWidthStep(), out_sliceStep = output.GetSliceStep();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1649,6 +2710,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
@@ -1667,6 +2729,9 @@ namespace ZQ
 				return true;
 			int in_pixStep = input.GetPixelStep(), in_widthStep = input.GetWidthStep(), in_sliceStep = input.GetSliceStep();
 			int align_mode = input.GetAlignType();
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1675,6 +2740,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			float* in_data = input.GetFirstPixelPtr();
 			_scalaroperation_rminus(align_mode, scalar, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep);
@@ -1711,6 +2777,9 @@ namespace ZQ
 			const float* in_data = input.GetFirstPixelPtr();
 			float* out_data = output.GetFirstPixelPtr();
 			int align_mode = __min(input.GetAlignType(), output.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1719,6 +2788,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_lrn_across_channels(align_mode, local_size, alpha, beta, k, in_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep, out_data, out_pixStep, out_widthStep, 
 				out_sliceStep);
@@ -1740,6 +2810,9 @@ namespace ZQ
 			float* in_data = input.GetFirstPixelPtr();
 			const float* scale_data = scale.GetFirstPixelPtr();
 			int align_mode = __min(input.GetAlignType(), scale.GetAlignType());
+#if __ARM_NEON
+			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
+#else
 #if ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX2
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_256bit);
 #elif ZQ_CNN_USE_SSETYPE == ZQ_CNN_SSETYPE_AVX
@@ -1748,6 +2821,7 @@ namespace ZQ
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_128bit);
 #else
 			align_mode = __min(align_mode, ZQ_CNN_Tensor4D::ALIGN_0);
+#endif
 #endif
 			_normalize(align_mode, across_spatial, channel_shared, in_data, scale_data, N, H, W, C, in_pixStep, in_widthStep, in_sliceStep,eps);
 			return true;
@@ -1828,6 +2902,13 @@ namespace ZQ
 		}
 
 	private:
+		static void _deconvolution_with_padding(int align_mode, const float* in_data, int in_N, int in_H, int in_W,
+			int in_C, int in_pixStep, int in_widthStep, int in_sliceStep, const float* filter_data, int filter_N, int filter_H, int filter_W, int filter_C,
+			int filter_pixStep, int filter_widthStep, int filter_sliceStep, int strideH, int strideW, int dilation_H, int dilation_W,
+			float* out_data, int out_N, int out_H, int out_W, int out_C, int out_pixStep, int out_widthStep, int out_sliceStep,
+			int pad_top, int pad_bottom, int pad_left, int pad_right,
+			void** buffer, __int64* buffer_len);
+
 		static void _convolution_nopadding(int align_mode, const float* in_data, int in_N, int in_H, int in_W,
 			int in_C, int in_pixStep, int in_widthStep, int in_sliceStep,const float* filter_data, int filter_N, int filter_H, int filter_W, int filter_C, 
 			int filter_pixStep, int filter_widthStep, int filter_sliceStep,	int strideH, int strideW, int dilation_H, int dilation_W,
@@ -1837,7 +2918,9 @@ namespace ZQ
 		static void _depthwise_convolution_nopadding(int align_mode, const float* in_data, int in_N, int in_H, int in_W,
 			int in_C, int in_pixStep, int in_widthStep, int in_sliceStep,
 			const float* filter_data, int filter_N, int filter_H, int filter_W, int filter_C, int filter_pixStep, int filter_widthStep, int filter_sliceStep,
-			int strideH, int strideW, float* out_data, int out_N, int out_H, int out_W, int out_C, int out_pixStep, int out_widthStep, int out_sliceStep);
+			int strideH, int strideW, int dilate_H, int dilate_W,
+			float* out_data, int out_N, int out_H, int out_W, int out_C, int out_pixStep, int out_widthStep, int out_sliceStep, 
+			const float* bias, const float* slope);
 
 		static void _inner_product(int align_mode, const float* in_data, int in_N, int in_H, int in_W, int in_C, int in_pixStep, int in_widthStep, int in_sliceStep,
 			const float* filter_data, int filter_N, int filter_pixStep, int filter_widthStep, int filter_sliceStep,
@@ -1850,9 +2933,13 @@ namespace ZQ
 
 		static void _dropout(int align_mode, float* in_data, int N, int H, int W, int C, int pixStep, int widthStep, int sliceStep, float ratio);
 
+		static void _addbias_prelu(int align_mode, float* data, int N, int H, int W, int C, int pixelStep, int widthStep, int sliceStep, const float* bias, const float* slope_Data);
+
 		static void _prelu(int align_mode, float* data, int N, int H, int W, int C, int pixelStep, int widthStep, int sliceStep, const float* slope_Data);
 
 		static void _relu(int align_mode, float* data, int N, int H, int W, int C, int pixelStep, int widthStep, int sliceStep, float slope);
+
+		static void _relu6(int align_mode, float* data, int N, int H, int W, int C, int pixelStep, int widthStep, int sliceStep);
 
 		static void _maxpooling(int align_mode, const float* in_data, int N, int in_H, int in_W, int C, int in_pixStep, int in_widthStep, int in_sliceStep,
 			int kernel_H, int kernel_W, int stride_H, int stride_W,	float* out_data, int out_H, int out_W, int out_pixStep, int out_widthStep, int out_sliceStep);

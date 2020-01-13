@@ -1,7 +1,6 @@
 #ifndef _ZQ_CNN_TENSOR_4D_H_
 #define _ZQ_CNN_TENSOR_4D_H_
 #pragma once
-#include "ZQ_CNN_Defines.h"
 #include "ZQ_CNN_CompileConfig.h"
 #include <string.h>
 #include <stdlib.h>
@@ -34,6 +33,18 @@ namespace ZQ
 		const int GetWidthStep() const { return widthStep; }
 		const int GetSliceStep() const { return sliceStep; }
 		ALIGN_TYPE GetAlignType() const { return align_type; }
+
+		inline bool ResizeNearest(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH) const
+		{
+			return ResizeNearestRect(dst, dst_W, dst_H, dst_borderW, dst_borderH, 0, 0, W, H);
+		}
+		virtual bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			int src_off_x, int src_off_y, int src_rect_w, int src_rect_h) const = 0;
+
+		virtual bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const = 0;
+
+
 		inline bool ResizeBilinear(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH) const
 		{
 			return ResizeBilinearRect(dst, dst_W, dst_H, dst_borderW, dst_borderH, 0, 0, W, H);
@@ -44,7 +55,11 @@ namespace ZQ
 		virtual bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
 			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const = 0;
 
+		virtual bool Remap(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<float>& map_x, const std::vector<float>& map_y, bool use_fill_val = false, float fill_val = 0) const = 0;
+
 		virtual bool Padding(int padW, int padH, int mode) = 0;
+		virtual bool Padding(int padW_left, int padW_right, int padH_top, int padH_bottom, int mode) = 0;
 		virtual bool ChangeSize(int N, int H, int W, int C, int borderW, int borderH) = 0;
 		virtual void ShrinkToFit() = 0;
 		virtual bool IsBorderEnabled() const = 0;
@@ -90,7 +105,7 @@ namespace ZQ
 				if (dst_borderH > 0)
 				{
 					memset(dst_slice_ptr - dstPixelStep*dst_borderW - dstWidthStep*dst_borderH, 0, sizeof(float)*dstWidthStep*dst_borderH);
-					memset(dst_slice_ptr - dstPixelStep*dst_borderW + dstWidthStep*dst_borderH, 0, sizeof(float)*dstWidthStep*dst_borderH);
+					memset(dst_slice_ptr - dstPixelStep*dst_borderW + dstWidthStep*height, 0, sizeof(float)*dstWidthStep*dst_borderH);
 				}
 				if (dst_borderW > 0)
 				{
@@ -342,11 +357,11 @@ namespace ZQ
 				for (int w = 0; w < W; w++, cur_pix += pixelStep, bgr_pix += 3)
 				{
 					tmp = (cur_pix[0] + 1.0f)*scale + 0.5f;
-					bgr_pix[2] = __min(255, __max(0, (int)tmp));
+					bgr_pix[0] = __min(255, __max(0, (int)tmp));
 					tmp = (cur_pix[1] + 1.0f)*scale + 0.5f;
 					bgr_pix[1] = __min(255, __max(0, (int)tmp));
 					tmp = (cur_pix[2] + 1.0f)*scale + 0.5f;
-					bgr_pix[0] = __min(255, __max(0, (int)tmp));
+					bgr_pix[2] = __min(255, __max(0, (int)tmp));
 				}
 			}
 			return true;
@@ -586,6 +601,42 @@ namespace ZQ
 			return true;
 		}
 
+		bool SaveToFile(const char* file)
+		{
+			int HW = H*W;
+			int CHW = C*HW;
+			int buf_len = N*CHW;
+			std::vector<float> buffer(buf_len);
+			FILE* out;
+#if defined(_WIN32)
+			if (0 != fopen_s(&out, file, "w"))
+				return false;
+#else
+			out = fopen(file, "w");
+			if (out == 0)
+				return false;
+#endif
+			if (buf_len > 0)
+			{
+				ConvertToCompactNCHW(&buffer[0]);
+				for (int n = 0; n < N; n++)
+				{
+					for (int h = 0; h < H; h++)
+					{
+						for (int w = 0; w < W; w++)
+						{
+							fprintf(out, "[n,h,w]=[%04d,%04d,%04d]: ", n, h, w);
+							for (int c = 0; c < C; c++)
+								fprintf(out, " %4d:%12.7f", c, buffer[n*CHW + c*HW + h*W + w]);
+							fprintf(out, "\n");
+						}
+					}
+				}
+			}
+			fclose(out);
+			return true;
+		}
+
 	protected:
 		int shape_nchw[4];
 		int N;
@@ -611,22 +662,32 @@ namespace ZQ
 	{
 	public:
 		/*********************   Interface functions ********************/	
-		ZQ_CNN_EXPORT bool Padding(int padW, int padH, int mode);
-		ZQ_CNN_EXPORT bool ChangeSize(int N, int H, int W, int C, int borderW, int borderH);
+		bool Padding(int padW, int padH, int mode);
+		bool Padding(int padW_left, int padW_right, int padH_top, int padH_bottom, int mode);
+		bool ChangeSize(int N, int H, int W, int C, int borderW, int borderH);
 		void ShrinkToFit() { ChangeSize(0, 0, 0, 0, 0, 0); }
 		
 		bool IsBorderEnabled() const { return true; }
 		
 		/*********************   other functions ********************/
-		ZQ_CNN_EXPORT ZQ_CNN_Tensor4D_NHW_C_Align0();
-		ZQ_CNN_EXPORT ~ZQ_CNN_Tensor4D_NHW_C_Align0();
-		ZQ_CNN_EXPORT void Swap(ZQ_CNN_Tensor4D_NHW_C_Align0& other);
+		ZQ_CNN_Tensor4D_NHW_C_Align0();
+		~ZQ_CNN_Tensor4D_NHW_C_Align0();
+		void Swap(ZQ_CNN_Tensor4D_NHW_C_Align0& other);
 
-		ZQ_CNN_EXPORT bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+		bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
 			int src_off_x, int src_off_y, int src_rect_w, int src_rect_h) const;
 
-		virtual ZQ_CNN_EXPORT bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+		virtual bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
 			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const;
+
+		bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			int src_off_x, int src_off_y, int src_rect_w, int src_rect_h) const;
+
+		virtual bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const;
+
+		virtual bool Remap(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<float>& map_x, const std::vector<float>& map_y, bool use_fill_val = false, float fill_val = 0) const;
 	};
 
 
@@ -634,42 +695,62 @@ namespace ZQ
 	{
 	public:
 		/*********************   Interface functions ********************/
-		ZQ_CNN_EXPORT bool Padding(int padW, int padH, int mode);
-		ZQ_CNN_EXPORT bool ChangeSize(int N, int H, int W, int C, int borderW, int borderH);
+		bool Padding(int padW, int padH, int mode);
+		bool Padding(int padW_left, int padW_right, int padH_top, int padH_bottom, int mode);
+		bool ChangeSize(int N, int H, int W, int C, int borderW, int borderH);
 		void ShrinkToFit() { ChangeSize(0, 0, 0, 0, 0, 0); }
 		bool IsBorderEnabled() const { return true; }
 		
 		/*********************   other functions ********************/
-		ZQ_CNN_EXPORT ZQ_CNN_Tensor4D_NHW_C_Align128bit();
-		ZQ_CNN_EXPORT ~ZQ_CNN_Tensor4D_NHW_C_Align128bit();
+		ZQ_CNN_Tensor4D_NHW_C_Align128bit();
+		~ZQ_CNN_Tensor4D_NHW_C_Align128bit();
 		void Swap(ZQ_CNN_Tensor4D_NHW_C_Align128bit& other);
 
-		ZQ_CNN_EXPORT bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+		bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
 			int src_off_x, int src_off_y, int src_rect_w, int src_rect_h) const;
 
-		virtual ZQ_CNN_EXPORT bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+		virtual bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
 			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const;
+
+		bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			int src_off_x, int src_off_y, int src_rect_w, int src_rect_h) const;
+
+		virtual bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const;
+
+		virtual bool Remap(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<float>& map_x, const std::vector<float>& map_y, bool use_fill_val = false, float fill_val = 0) const;
 	};
 
 	class ZQ_CNN_Tensor4D_NHW_C_Align256bit : public ZQ_CNN_Tensor4D
 	{
 	public:
 		/*********************   Interface functions ********************/
-		ZQ_CNN_EXPORT bool Padding(int padW, int padH, int mode);
-		ZQ_CNN_EXPORT bool ChangeSize(int N, int H, int W, int C, int borderW, int borderH);
+		bool Padding(int padW, int padH, int mode);
+		bool Padding(int padW_left, int padW_right, int padH_top, int padH_bottom, int mode);
+		bool ChangeSize(int N, int H, int W, int C, int borderW, int borderH);
 		void ShrinkToFit() { ChangeSize(0, 0, 0, 0, 0, 0); }
 		bool IsBorderEnabled() const { return true; }
 		
 		/*********************   other functions ********************/
-		ZQ_CNN_EXPORT ZQ_CNN_Tensor4D_NHW_C_Align256bit();
-		ZQ_CNN_EXPORT ~ZQ_CNN_Tensor4D_NHW_C_Align256bit();
+		ZQ_CNN_Tensor4D_NHW_C_Align256bit();
+		~ZQ_CNN_Tensor4D_NHW_C_Align256bit();
 		void Swap(ZQ_CNN_Tensor4D_NHW_C_Align256bit& other);
 
-		ZQ_CNN_EXPORT bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+		bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
 			int src_off_x, int src_off_y, int src_rect_w, int src_rect_h) const;
 
-		virtual ZQ_CNN_EXPORT bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+		virtual bool ResizeNearestRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
 			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const;
+
+		bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			int src_off_x, int src_off_y, int src_rect_w, int src_rect_h) const;
+
+		virtual bool ResizeBilinearRect(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<int>& src_off_x, const std::vector<int>& src_off_y, const std::vector<int>& src_rect_w, const std::vector<int>& src_rect_h) const;
+
+		virtual bool Remap(ZQ_CNN_Tensor4D& dst, int dst_W, int dst_H, int dst_borderW, int dst_borderH,
+			const std::vector<float>& map_x, const std::vector<float>& map_y, bool use_fill_val = false, float fill_val = 0) const;
 	};
 }
 

@@ -1,6 +1,6 @@
 # 简介
 
-ZQCNN是ZuoQing参照mini-caffe写的forward库，使用depthwise convolution的网络，ZQCNN性能远超mini-caffe、opencv。
+ZQCNN是ZuoQing参照mini-caffe写的forward库，ZQCNN性能远超mini-caffe、opencv。
 
 ## 主开发环境 ：[VS2015 with Update 3](https://pan.baidu.com/s/1zoREccOxVsggV-iI2z4HTg)
 
@@ -10,6 +10,22 @@ ZQCNN是ZuoQing参照mini-caffe写的forward库，使用depthwise convolution的
 
   如果按照[build-with-cmake.md](https://github.com/zuoqing1988/ZQCNN/blob/master/build-with-cmake.md)不能完全编译，可以只编译ZQ_GEMM，ZQCNN，和其他你想测试的程序
 
+## 核心模块支持arm-linux:
+
+  如果按照[build-with-cmake.md](https://github.com/zuoqing1988/ZQCNN/blob/master/build-with-cmake.md)不能完全编译，可以只编译ZQ_GEMM，ZQCNN，和其他你想测试的程序
+  
+**BUG:** cmake .. -DSIMD_ARCH_TYPE=arm64 -DBLAS_TYPE=openblas_zq_gemm 
+
+理想情况下会使用openblas和ZQ_GEMM较快的一方来计算卷积（我通过在cortex-A72上测试时间来选择分支）。然而目前这个选项并不能达到预期效果，
+  需要手工注在ZQ_CNN_CompileConfig.h里定义
+  
+	#define ZQ_CNN_USE_ZQ_GEMM 1
+	#define ZQ_CNN_USE_BLAS_GEMM 1
+	
+可以注释掉
+  
+	line 67: #if defined(ZQ_CNN_USE_BOTH_BLAS_ZQ_GEMM)
+	line 70: #endif
 
 ## 训练相关
 
@@ -23,6 +39,59 @@ ZQCNN是ZuoQing参照mini-caffe写的forward库，使用depthwise convolution的
 
 
 # 更新日志
+
+**2019-07-08日更新：ZQCNN模型转MNN模型代码**
+
+[点此阅读](https://github.com/zuoqing1988/ZQCNN/tree/master/ZQCNN_to_MNN)
+
+**2019-05-28日更新：开源一个准商用级106点模型**
+
+ZQCNN格式：在model文件夹det5-dw112
+
+mxnet格式：链接：https://pan.baidu.com/s/19DTG3rmkct8AiEu0l3DYjw 提取码：qjzk 
+
+
+**2019-03-16日更新：达到800星，公布更准的106点landmark模型**
+
+[ZQCNN格式:det5-dw96-v2s](https://github.com/zuoqing1988/ZQCNN/tree/master/model)model文件夹中det5-dw96-v2s.zqparams, det5-dw96-v2s.nchwbin
+
+[mxnet格式:Lnet106_96_v2s](https://pan.baidu.com/s/1iuuAHgJBsdWsUoAdU5H58Q)提取码：r5h2
+
+**2019-02-14日更新：达到700星，公布人脸检测精选模型**
+
+[ZQCNN格式：精选6种Pnet、2种Rnet、2种Onet、2种Lnet](https://pan.baidu.com/s/1X2U9Y-6MJw3md8WuYxaotw)
+
+| 六种Pnet                                                        | 输入尺寸     | 计算量（不计bbox）|  备注                |
+| --------                                                        | ------       | ------------      | -------------------- |
+| [Pnet20_v00](https://pan.baidu.com/s/1g7JnOxnbXIbNWPXGI-IzrQ)   | 320x240      | 8.5 M             | 对标libfacedetection |
+| [Pnet20_v0](https://pan.baidu.com/s/1r3VcmEX1a2C5gKlGKnC4kw)    | 320x240      | 11.6 M            | 对标libfacedetection |
+| [Pnet20_v1](https://pan.baidu.com/s/1qVU3_nporbOUzXYu7giZkA)    | 320x240      | 14.6 M            |                      |
+| [Pnet20_v2](https://pan.baidu.com/s/1bXzdmsTgfqU_TJHsozSmrQ)    | 320x240      | 18.4 M            | 对标原版pnet         |
+| [Pnet16_v0](https://pan.baidu.com/s/1s5eZLeAKnqp1ZDTrzaOD_w)    | 256x192      | 7.5 M             |         stride=4     |
+| [Pnet16_v1](https://pan.baidu.com/s/1Lf0z6rRq5WUKE_DMze_C7w)    | 256x192      | 9.8 M             |         stride=4     |
+
+| 两种Rnet                                                      | 输入尺寸   | 计算量           |  备注                |
+| --------                                                      | ------     | ------------     | -------------------- |
+| [Rnet_v1](https://pan.baidu.com/s/1SEIolnvmtPvdqbHxU1vPWQ)    | 24x24      | 0.5 M            | 对标原版Rnet         |
+| [Rnet_v2](https://pan.baidu.com/s/1APWYGcFC5MAn6Ba5vWo80w)    | 24x24      | 1.4 M            |                      |
+
+| 两种Onet                                                      | 输入尺寸   | 计算量           |  备注                |
+| --------                                                      | ------     | ------------     | -------------------- |
+| [Onet_v1](https://pan.baidu.com/s/1UTvSKErOul2wkT5EMxXgVA)    | 48x48      | 2.0 M            | 不含landmark         |
+| [Onet_v2](https://pan.baidu.com/s/19QomSIy3Py516OEIBFDcVg)    | 48x48      | 3.2 M            | 不含landmark         |
+
+| 两种Lnet                                                      | 输入尺寸   | 计算量           |  备注                |
+| --------                                                      | ------     | ------------     | -------------------- |
+| [Lnet_v2](https://pan.baidu.com/s/1W6bxNeD0psxwxbou_xwK-g)    | 48x48      |  3.5 M           | lnet_basenum=16      |
+| [Lnet_v2](https://pan.baidu.com/s/1e3tuwrR3AoU_zRKkIFK8xg)    | 48x48      | 10.8 M           | lnet_basenum=32      |
+
+**2019-01-31日更新：达到600星，公布MTCNN人头检测模型**
+
+hollywoodheads数据训练的，效果一般，凑合用吧
+
+人头检测mtcnn-head[mxnet-v0](https://pan.baidu.com/s/11I-ZnW3AAijlijtroyxClQ)&[zqcnn-v0](https://pan.baidu.com/s/1Xh27qm_LmuV6ZIDLBUXfPQ)
+
+
 
 **2019-01-24日更新：核心模块支持linux**
 
@@ -338,3 +407,16 @@ Convolution name=conv1 bottom=data top=conv1 num_output=10 kernel_size=3 stride=
 (13)[普通卷积、mobilenet卷积、全局平均池化的矩阵描述](https://zhuanlan.zhihu.com/p/45536594)
 
 (14)[ZQ_FastFaceDetector更快更准的人脸检测库](https://zhuanlan.zhihu.com/p/51561288)
+
+**Android编译说明**
+1. 修改build.sh中的ndk路径和opencv安卓sdk的路径
+2. 修改CMakeLists.txt
+   从原来的
+    #add_definitions(-march=native)
+    add_definitions(-mfpu=neon)
+    add_definitions(-mfloat-abi=hard)
+    改为
+    #add_definitions(-march=native)
+    add_definitions(-mfpu=neon)
+    add_definitions(-mfloat-abi=softfp)
+3. 这样应该可以编译两个库ZQ_GEMM和ZQCNN了.如果要编译SampleMTCNN可以按照错误提示修改不能编译的部分,主要是openmp和计时函数.

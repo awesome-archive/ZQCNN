@@ -15,6 +15,32 @@ If you are using 3rdparty blas libraries, please download [mklmk_lnx](https://gi
 
 ```shell
 mkdir cmake-build-release && cd cmake-build-release
-cmake .. -DCMAKE_BUILD_TYPE=release
+cmake .. 
 make -j4
 ```
+
+## arm
+
+**32bit**
+```shell
+mkdir cmake-build-release && cd cmake-build-release
+cmake .. -DSIMD_ARCH_TYPE=arm
+make SampleMatMulNEON
+make SampleMTCNN
+make SampleSphereFaceNet
+```
+
+**64bit**
+```shell
+mkdir cmake-build-release && cd cmake-build-release
+cmake .. -DSIMD_ARCH_TYPE=arm64
+make SampleMatMulNEON
+make SampleMTCNN
+make SampleSphereFaceNet
+```
+
+**use OpenBLAS**
+
+add cmake flag: -DBLAS_TYPE=openblas
+
+
