@@ -90,5 +90,17 @@
     <ClInclude Include="ZQ_FaceRecognizerArcFaceOpenCV.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="ZQ_FaceRecognizerSphereFaceGrayNCNN.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ZQ_FaceRecognizerArcFaceGrayNCNN.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ZQ_FaceRecognizerSphereFaceNCNN.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ZQ_FaceRecognizerArcFaceNCNN.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

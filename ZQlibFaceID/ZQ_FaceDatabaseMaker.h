@@ -2,11 +2,18 @@
 #define _ZQ_FACE_DATABASE_MAKER_H_
 #pragma once
 #include <sstream>
+#if defined(_WIN32)
 #include <direct.h>
-#include <windows.h>
 #include <io.h>
+#else
+#include <unistd.h>
+#include <sys/io.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
+#endif
 #include <omp.h>
-#include <opencv2\opencv.hpp>
+#include <opencv2/opencv.hpp>
 #include "ZQ_FaceDetector.h"
 #include "ZQ_FaceRecognizer.h"
 #include "ZQ_FaceDatabase.h"
@@ -33,32 +40,7 @@ namespace ZQ
 	public:
 		static bool MakeDatabase(std::vector<ZQ_FaceDetector*>& detectors, std::vector<ZQ_FaceRecognizer*> recognizers,
 			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
-			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1)
-		{
-			for (int i = 0; i < detectors.size(); i++)
-				if (detectors[i] == 0)
-					return false;
-			for (int i = 0; i < recognizers.size(); i++)
-				if (recognizers[i] == 0)
-					return false;
-			return _make_database(detectors, recognizers, database_root, database_featsfile, database_namesfile, type, show_face, 
-				max_thread_num, false);
-		}
-
-		static bool MakeDatabaseAlreadyCropped(std::vector<ZQ_FaceRecognizer*> recognizers,
-			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
-			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1)
-		{
-			for (int i = 0; i < recognizers.size(); i++)
-				if (recognizers[i] == 0)
-					return false;
-			return _make_database_already_cropped(recognizers, database_root, database_featsfile, database_namesfile, type, show_face,
-				max_thread_num, false);
-		}
-
-		static bool MakeDatabaseCompact(std::vector<ZQ_FaceDetector*>& detectors, std::vector<ZQ_FaceRecognizer*> recognizers,
-			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
-			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1)
+			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool use_gray = false)
 		{
 			for (int i = 0; i < detectors.size(); i++)
 				if (detectors[i] == 0)
@@ -67,22 +49,47 @@ namespace ZQ
 				if (recognizers[i] == 0)
 					return false;
 			return _make_database(detectors, recognizers, database_root, database_featsfile, database_namesfile, type, show_face,
-				max_thread_num, true);
+				max_thread_num, false, use_gray);
 		}
 
-		static bool MakeDatabaseCompactAlreadyCropped(std::vector<ZQ_FaceRecognizer*> recognizers,
+		static bool MakeDatabaseAlreadyCropped(std::vector<ZQ_FaceRecognizer*> recognizers,
 			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
-			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1)
+			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool use_gray = false)
 		{
 			for (int i = 0; i < recognizers.size(); i++)
 				if (recognizers[i] == 0)
 					return false;
 			return _make_database_already_cropped(recognizers, database_root, database_featsfile, database_namesfile, type, show_face,
-				max_thread_num, true);
+				max_thread_num, false, use_gray);
+		}
+
+		static bool MakeDatabaseCompact(std::vector<ZQ_FaceDetector*>& detectors, std::vector<ZQ_FaceRecognizer*> recognizers,
+			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
+			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool use_gray = false)
+		{
+			for (int i = 0; i < detectors.size(); i++)
+				if (detectors[i] == 0)
+					return false;
+			for (int i = 0; i < recognizers.size(); i++)
+				if (recognizers[i] == 0)
+					return false;
+			return _make_database(detectors, recognizers, database_root, database_featsfile, database_namesfile, type, show_face,
+				max_thread_num, true, use_gray);
+		}
+
+		static bool MakeDatabaseCompactAlreadyCropped(std::vector<ZQ_FaceRecognizer*> recognizers,
+			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
+			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool use_gray = false)
+		{
+			for (int i = 0; i < recognizers.size(); i++)
+				if (recognizers[i] == 0)
+					return false;
+			return _make_database_already_cropped(recognizers, database_root, database_featsfile, database_namesfile, type, show_face,
+				max_thread_num, true, use_gray);
 		}
 
 		static bool CropImagesForDatabase(const std::vector<ZQ_FaceDetector*>& detectors, const std::vector<ZQ_FaceRecognizer*>& recognizers,
-			const std::string& src_root, const std::string& dst_root, int max_thread_num = 4, bool strict_check = true, 
+			const std::string& src_root, const std::string& dst_root, int max_thread_num = 4, bool strict_check = true,
 			std::string err_logfile = "err_log.txt", bool only_for_high_quality = false)
 		{
 			return _crop_images_for_database(detectors, recognizers, src_root, dst_root, max_thread_num, strict_check, err_logfile, only_for_high_quality);
@@ -94,16 +101,16 @@ namespace ZQ
 		{
 			return _detect_outliers_in_database(recognizers, src_root, max_thread_num, out_file);
 		}
-		
+
 	private:
-	
+
 		static bool _make_database(std::vector<ZQ_FaceDetector*>& detectors, std::vector<ZQ_FaceRecognizer*> recognizers,
 			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
-			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool compact = false)
+			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool compact = false, bool use_gray = false)
 		{
 			if (type != ONLY_MERGE_FEATS && type != UPDATE_WHO_NOT_HAVE_FEATS && type != FORCE_UPDATE_ALL)
 			{
-				printf("type must be : ONLY_MERGE_FEATS(%d), UPDATE_WHO_NOT_HAVE_FEATS(%d), FORCE_UPDATE_ALL(%d)\n", 
+				printf("type must be : ONLY_MERGE_FEATS(%d), UPDATE_WHO_NOT_HAVE_FEATS(%d), FORCE_UPDATE_ALL(%d)\n",
 					ONLY_MERGE_FEATS, UPDATE_WHO_NOT_HAVE_FEATS, FORCE_UPDATE_ALL);
 				return false;
 			}
@@ -127,7 +134,7 @@ namespace ZQ
 			std::vector<std::vector<bool> > fail_flag;
 
 			_auto_detect_database(database_root, person_names, filenames);
-			
+
 			int num_cores = omp_get_num_procs() - 1;
 
 			int real_thread_num = __min(max_thread_num, __min(num_cores, __min(num_detectors, num_recognizers)));
@@ -192,7 +199,7 @@ namespace ZQ
 				bool ret = true;
 				if (need_detect)
 				{
-					if (!_extract_feature_from_img(*detectors[id], *recognizers[id], filenames[i][j], feat, crop, err_code, err_msg, false))
+					if (!_extract_feature_from_img(*detectors[id], *recognizers[id], filenames[i][j], feat, crop, err_code, err_msg, false, use_gray))
 					{
 #pragma omp critical
 						{
@@ -254,7 +261,7 @@ namespace ZQ
 				if (!database.SaveToFileBinaryCompact(database_featsfile, database_namesfile))
 				{
 					printf("failed to save database\n");
-					return EXIT_FAILURE;
+					return false;
 				}
 			}
 			else
@@ -262,18 +269,18 @@ namespace ZQ
 				if (!database.SaveToFileBinary(database_featsfile, database_namesfile))
 				{
 					printf("failed to save database\n");
-					return EXIT_FAILURE;
+					return false;
 				}
 			}
 
 			printf("all done\n");
 			_write_error_messages(err_logfile, ErrorCodes, error_messages);
-			return EXIT_SUCCESS;
+			return true;
 		}
 
 		static bool _make_database_already_cropped(std::vector<ZQ_FaceRecognizer*> recognizers,
 			const std::string& database_root, const std::string& database_featsfile, const std::string& database_namesfile,
-			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool compact = false)
+			MakeDatabaseType type = ONLY_MERGE_FEATS, bool show_face = false, int max_thread_num = 1, bool compact = false, bool use_gray = false)
 		{
 			if (type != ONLY_MERGE_FEATS && type != UPDATE_WHO_NOT_HAVE_FEATS && type != FORCE_UPDATE_ALL)
 			{
@@ -365,7 +372,7 @@ namespace ZQ
 				bool ret = true;
 				if (need_detect)
 				{
-					if (!_extract_feature_from_cropped_image(*recognizers[id], filenames[i][j], feat, crop, err_code, err_msg))
+					if (!_extract_feature_from_cropped_image(*recognizers[id], filenames[i][j], feat, crop, err_code, err_msg, use_gray))
 					{
 #pragma omp critical
 						{
@@ -427,7 +434,7 @@ namespace ZQ
 				if (!database.SaveToFileBinaryCompact(database_featsfile, database_namesfile))
 				{
 					printf("failed to save database\n");
-					return EXIT_FAILURE;
+					return false;
 				}
 			}
 			else
@@ -435,13 +442,13 @@ namespace ZQ
 				if (!database.SaveToFileBinary(database_featsfile, database_namesfile))
 				{
 					printf("failed to save database\n");
-					return EXIT_FAILURE;
+					return false;
 				}
 			}
 
 			printf("all done\n");
 			_write_error_messages(err_logfile, ErrorCodes, error_messages);
-			return EXIT_SUCCESS;
+			return true;
 		}
 
 		static bool _crop_images_for_database(const std::vector<ZQ_FaceDetector*>& detectors, const std::vector<ZQ_FaceRecognizer*>& recognizers,
@@ -466,11 +473,21 @@ namespace ZQ
 			_auto_detect_database(src_root, person_names, filenames);
 
 			int person_num = person_names.size();
+#if defined(_WIN32)
 			_mkdir(dst_root.c_str());
+#else
+			mkdir(dst_root.c_str(), 0777);
+#endif
 			for (int i = 0; i < person_num; i++)
 			{
+#if defined(_WIN32)
 				std::string path = dst_root + "\\" + person_names[i];
 				_mkdir(path.c_str());
+#else
+				std::string path = dst_root + "/" + person_names[i];
+				mkdir(path.c_str(), 0777);
+#endif
+
 			}
 
 			clock_t start_time = clock();
@@ -553,12 +570,19 @@ namespace ZQ
 						}
 						continue;
 					}
-
+#if defined(_WIN32)
 					size_t pos = filenames[i][j].find_last_of('\\');
+#else
+					size_t pos = filenames[i][j].find_last_of('/');
+#endif
 					if (pos != std::string::npos)
 					{
 						std::string real_name(filenames[i][j].c_str() + pos + 1);
+#if defined(_WIN32)
 						std::string fullname = dst_root + "\\" + person_names[i] + "\\" + real_name;
+#else
+						std::string fullname = dst_root + "/" + person_names[i] + "/" + real_name;
+#endif
 						cv::imwrite(fullname, crop);
 #pragma omp critical
 						{
@@ -636,12 +660,19 @@ namespace ZQ
 						}
 						continue;
 					}
-
+#if defined(_WIN32)
 					size_t pos = filenames[i][j].find_last_of('\\');
+#else
+					size_t pos = filenames[i][j].find_last_of('/');
+#endif
 					if (pos != std::string::npos)
 					{
 						std::string real_name(filenames[i][j].c_str() + pos + 1);
+#if defined(_WIN32)
 						std::string fullname = dst_root + "\\" + person_names[i] + "\\" + real_name;
+#else
+						std::string fullname = dst_root + "/" + person_names[i] + "/" + real_name;
+#endif
 						cv::imwrite(fullname, crop);
 #pragma omp critical
 						{
@@ -652,7 +683,7 @@ namespace ZQ
 			}
 
 
-			
+
 
 			clock_t end = clock();
 			printf("time: %f\n", 0.001*(end - start));
@@ -696,14 +727,14 @@ namespace ZQ
 			return true;
 		}
 
-		static bool _extract_feature_from_cropped_image(ZQ_FaceRecognizer& recognizer, const std::string& imgfile, const cv::Mat& image, 
+		static bool _extract_feature_from_cropped_image(ZQ_FaceRecognizer& recognizer, const std::string& imgfile, const cv::Mat& image,
 			ZQ_FaceFeature& feat, ErrorCode& err_code, std::string& err_msg)
 		{
 			int nChannels = image.channels();
 			ZQ_PixelFormat pixFmt = (nChannels == 1) ? ZQ_PIXEL_FMT_GRAY : ZQ_PIXEL_FMT_BGR;
 			int width = recognizer.GetCropWidth();
 			int height = recognizer.GetCropHeight();
-			
+
 			int feat_dim = recognizer.GetFeatDim();
 			std::ostringstream oss;
 			feat.ChangeSize(feat_dim);
@@ -722,10 +753,10 @@ namespace ZQ
 
 		static bool _extract_feature_from_img(ZQ_FaceDetector& detector, ZQ_FaceRecognizer& recognizer,
 			const std::string& imgfile, ZQ_FaceFeature& feat, cv::Mat& crop, ErrorCode& err_code, std::string& err_msg,
-			bool only_for_high_quality)
+			bool only_for_high_quality, bool use_gray)
 		{
 			std::ostringstream oss;
-			cv::Mat image = cv::imread(imgfile);
+			cv::Mat image = cv::imread(imgfile,use_gray ? 0 : 1);
 			if (image.empty())
 			{
 				printf("failed to read image: %s\n", imgfile.c_str());
@@ -749,10 +780,10 @@ namespace ZQ
 		}
 
 		static bool _extract_feature_from_cropped_image(ZQ_FaceRecognizer& recognizer,
-			const std::string& imgfile, ZQ_FaceFeature& feat, cv::Mat& crop, ErrorCode& err_code, std::string& err_msg)
+			const std::string& imgfile, ZQ_FaceFeature& feat, cv::Mat& crop, ErrorCode& err_code, std::string& err_msg, bool use_gray)
 		{
 			std::ostringstream oss;
-			cv::Mat image = cv::imread(imgfile);
+			cv::Mat image = cv::imread(imgfile, use_gray ? 0 : 1);
 			if (image.empty())
 			{
 				printf("failed to read image: %s\n", imgfile.c_str());
@@ -775,8 +806,15 @@ namespace ZQ
 		{
 			std::string feat_file = imgfile + ".imgfeat";
 			FILE* in = 0;
-			if( 0 != fopen_s(&in, feat_file.c_str(), "rb"))
+#if defined(_WIN32)
+			if (0 != fopen_s(&in, feat_file.c_str(), "rb"))
 				return false;
+#else
+			in = fopen(feat_file.c_str(), "rb");
+			if (in == NULL)
+				return false;
+#endif
+
 			int feat_dim = 0;
 			fread(&feat_dim, sizeof(int), 1, in);
 			feat.ChangeSize(feat_dim);
@@ -789,8 +827,14 @@ namespace ZQ
 		{
 			std::string feat_file = imgfile + ".imgfeat";
 			FILE* out = 0;
+#if defined(_WIN32)
 			if (0 != fopen_s(&out, feat_file.c_str(), "wb"))
 				return false;
+#else
+			out = fopen(feat_file.c_str(), "wb");
+			if (out == NULL)
+				return false;
+#endif
 			int feat_dim = feat.length;
 			fwrite(&feat_dim, sizeof(int), 1, out);
 			fwrite(feat.pData, sizeof(float), feat_dim, out);
@@ -801,8 +845,14 @@ namespace ZQ
 		static bool _write_error_messages(const std::string& file, const std::vector<ErrorCode>& ErrorCodes, const std::vector<std::string>& error_messages)
 		{
 			FILE* out = 0;
-			if(0 != fopen_s(&out, file.c_str(), "w"))
+#if defined(_WIN32)
+			if (0 != fopen_s(&out, file.c_str(), "w"))
 				return false;
+#else
+			out = fopen(file.c_str(), "w");
+			if (out == NULL)
+				return false;
+#endif
 			int num = ErrorCodes.size();
 			if (num != error_messages.size())
 				return false;
@@ -814,6 +864,7 @@ namespace ZQ
 			return true;
 		}
 
+#if defined(_WIN32)
 		static bool _auto_detect_database(const std::string& root_path, std::vector<std::string>& person_names, std::vector<std::vector<std::string> >& filenames)
 		{
 			std::string dir(root_path);
@@ -861,16 +912,87 @@ namespace ZQ
 			}
 			return true;
 		}
+#else
+		static bool _auto_detect_database(const std::string& root_path, std::vector<std::string>& person_names, std::vector<std::vector<std::string> >& filenames)
+		{
+			person_names.clear();
+			filenames.clear();
+
+			std::string dir(root_path);
+			struct dirent* ent = NULL;
+			DIR* pDir = opendir(dir.c_str());
+			if (pDir == NULL)
+				return false;
+			while (NULL != (ent = readdir(pDir)))
+			{
+				if (ent->d_type == DT_REG) // file
+				{
+					//printf("file:%s\n", ent->d_name);
+				}
+				else if (ent->d_type == DT_DIR) // subdir
+				{
+					std::string str(ent->d_name);
+					if (str != "." && str != "..")
+					{
+						person_names.push_back(str);
+						printf("subdir:%s\n", ent->d_name);
+					}
+				}
+			}
+			closedir(pDir);
+
+			int person_num = person_names.size();
+			filenames.resize(person_num);
+			for (int i = 0; i < person_num; i++)
+			{
+				dir = root_path + "/" + person_names[i];
+				ent = NULL;
+				pDir = opendir(dir.c_str());
+				if (pDir == NULL)
+					continue;
+				while (NULL != (ent = readdir(pDir)))
+				{
+					if (ent->d_type == DT_REG) // file
+					{
+						int namelen = strlen(ent->d_name);
+						if (namelen < 5)
+							continue;
+						if (strcmp(ent->d_name + namelen - 4, ".jpg") == 0)
+						{
+							std::string str(ent->d_name);
+							filenames[i].push_back(dir + "/" + str);
+							//printf("file:%s\n", ent->d_name);
+						}
+					}
+					else if (ent->d_type == DT_DIR) // subdir
+					{
+						//std::string str(ent->d_name);
+						//person_names.push_back(str);
+						//printf("subdir:%s\n", ent->d_name);
+					}
+				}
+				closedir(pDir);
+			}
+			return true;
+		}
+#endif
 
 		static bool _write_database_txt(const std::string& data_base_file, const std::vector<std::vector<std::string> >& filenames)
 		{
 			int num = filenames.size();
 			FILE* out = 0;
+#if defined(_WIN32)
 			if(0 != fopen_s(&out, data_base_file.c_str(), "w"))
 			{
 				return false;
 			}
-
+#else
+			out = fopen(data_base_file.c_str(), "w");
+			if (out == NULL)
+			{
+				return false;
+			}
+#endif
 			fprintf(out, "%d\n", num);
 			for (int i = 0; i < num; i++)
 			{
@@ -1123,11 +1245,20 @@ namespace ZQ
 			ZQ_MergeSort::MergeSort(&person_min_scores[0], &sort_indices[0], person_num, true);
 
 			FILE* out = 0;
+#if defined(_WIN32)
 			if (0 != fopen_s(&out,out_file.c_str(), "w"))
 			{
 				printf("failed to create file %s\n", out_file.c_str());
 				return false;
 			}
+#else
+			out = fopen(out_file.c_str(), "w");
+			if (out == NULL)
+			{
+				printf("failed to create file %s\n", out_file.c_str());
+				return false;
+			}
+#endif
 
 			for (int i = 0; i < person_num; i++)
 			{

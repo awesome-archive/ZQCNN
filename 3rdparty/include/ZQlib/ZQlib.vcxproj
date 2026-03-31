@@ -107,6 +107,7 @@
     <ClInclude Include="ZQ_FindCorners.h" />
     <ClInclude Include="ZQ_FindLargestRectInHistgram.h" />
     <ClInclude Include="ZQ_FindLargestSubMatrix.h" />
+    <ClInclude Include="ZQ_FindSimilarityLandmark.h" />
     <ClInclude Include="ZQ_GaussianPyramid.h" />
     <ClInclude Include="ZQ_GaussianPyramid3D.h" />
     <ClInclude Include="ZQ_GLSLShader.h" />
@@ -116,6 +117,7 @@
     <ClInclude Include="ZQ_GridDeformation3D.h" />
     <ClInclude Include="ZQ_GridDeformation3DOptions.h" />
     <ClInclude Include="ZQ_GridDeformationOptions.h" />
+    <ClInclude Include="ZQ_HeadPoseEstimation.h" />
     <ClInclude Include="ZQ_Huffman.h" />
     <ClInclude Include="ZQ_ICP.h" />
     <ClInclude Include="ZQ_ImageIO.h" />
@@ -135,6 +137,7 @@
     <ClInclude Include="ZQ_LazySnappingOptions.h" />
     <ClInclude Include="ZQ_LevMar.h" />
     <ClInclude Include="ZQ_Logger.h" />
+    <ClInclude Include="ZQ_LSD.h" />
     <ClInclude Include="ZQ_LSQRSolver.h" />
     <ClInclude Include="ZQ_LSQRUtils.h" />
     <ClInclude Include="ZQ_MarchingCube.h" />
@@ -154,6 +157,8 @@
     <ClInclude Include="ZQ_OpticalFlow3D.h" />
     <ClInclude Include="ZQ_OpticalFlowOptions.h" />
     <ClInclude Include="ZQ_PCGSolver.h" />
+    <ClInclude Include="ZQ_Ray2D.h" />
+    <ClInclude Include="ZQ_RectifyCard.h" />
     <ClInclude Include="ZQ_SplinePCHIP.h" />
     <ClInclude Include="ZQ_PIVMovingObject.h" />
     <ClInclude Include="ZQ_PIVMovingObject3D.h" />

@@ -45,10 +45,14 @@ namespace ZQ
 		bool need_check_overlap_count;
 		float ppoint[10];
 		float regreCoord[4];
+		float scale_x;
+		float scale_y;
 
 		ZQ_CNN_BBox()
 		{
 			memset(this, 0, sizeof(ZQ_CNN_BBox));
+			scale_x = 1;
+			scale_y = 1;
 		}
 
 		~ZQ_CNN_BBox() {}
@@ -81,10 +85,18 @@ namespace ZQ
 		bool need_check_overlap_count;
 		float ppoint[212];
 		float regreCoord[4];
+		float scale_x;
+		float scale_y;
+		bool has_headposegaze;
+		float headposegaze[9];
+		float center_and_rot[3];
 
 		ZQ_CNN_BBox106()
 		{
 			memset(this, 0, sizeof(ZQ_CNN_BBox106));
+			scale_x = 1;
+			scale_y = 1;
+			has_headposegaze = false;
 		}
 
 		~ZQ_CNN_BBox106() {}
@@ -99,6 +111,36 @@ namespace ZQ
 		bool WriteBinary(FILE* out) const
 		{
 			if (fwrite(this, sizeof(ZQ_CNN_BBox106), 1, out) != 1)
+				return false;
+			return true;
+		}
+	};
+
+	class ZQ_CNN_BBox240
+	{
+	public:
+		ZQ_CNN_BBox106 box;
+		float left_brow_eye_ppoint[70];
+		float right_brow_eye_ppoint[70];
+		float mouth_ppoint[128];
+
+		ZQ_CNN_BBox240()
+		{
+			memset(this, 0, sizeof(ZQ_CNN_BBox240));
+		}
+
+		~ZQ_CNN_BBox240() {}
+
+		bool ReadFromBinary(FILE* in)
+		{
+			if (fread(this, sizeof(ZQ_CNN_BBox240), 1, in) != 1)
+				return false;
+			return true;
+		}
+
+		bool WriteBinary(FILE* out) const
+		{
+			if (fwrite(this, sizeof(ZQ_CNN_BBox240), 1, out) != 1)
 				return false;
 			return true;
 		}

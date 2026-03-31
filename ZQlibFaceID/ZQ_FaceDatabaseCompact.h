@@ -50,6 +50,63 @@ namespace ZQ
 			return true;
 		}
 
+		bool GenerateRandomDatabase(int num_person, int num_feat_per_person, int dim)
+		{
+			if (dim != 128 && dim != 256 && dim != 512)
+			{
+				printf("dim must be 128 or 256 or 512\n");
+				return false;
+			}
+			_clear();
+			
+			std::vector<std::string> tmp_names;
+			for (__int64 i = 0; i < num_person; i++)
+			{
+				char buf[200];
+				sprintf(buf, "%d", i);
+				tmp_names.push_back(std::string(buf));
+			}
+			int* tmp_person_face_num = (int*)malloc(sizeof(int)*num_person);
+			for (int i = 0; i < num_person; i++)
+				tmp_person_face_num[i] = num_feat_per_person;
+
+			__int64* tmp_person_face_offset = (__int64*)malloc(sizeof(__int64)*num_person);
+			for (__int64 i = 0; i < num_person; i++)
+			{
+				tmp_person_face_offset[i] = i * num_feat_per_person;
+			}
+
+			__int64 num_all_feats = num_person * num_feat_per_person;
+			__int64 needed_bytes = num_all_feats * dim * sizeof(float);
+			float* tmp_all_feats = (float*)_aligned_malloc(needed_bytes, FEAT_ALIGNED_SIZE);
+			
+			printf("need %d MB \n", needed_bytes / 1024 / 1024);
+			if (tmp_all_feats == 0)
+			{
+				printf("failed to alloc memory, need %ld bytes\n", needed_bytes);
+				return false;
+			}
+			for (__int64 i = 0; i < num_all_feats*dim; i++)
+			{
+				tmp_all_feats[i] = rand() % 1001 / 1000.0;
+			}
+			for (__int64 i = 0; i < num_all_feats; i++)
+			{
+				ZQ_MathBase::Normalize(dim, tmp_all_feats + i*dim);
+			}
+			printf("done\n");
+			
+			this->dim = dim;
+			this->person_num = num_person;
+			this->person_face_num = tmp_person_face_num;
+			this->total_face_num = num_all_feats;
+			this->person_face_offset = tmp_person_face_offset;
+			this->all_face_feats = tmp_all_feats;
+			this->names.swap(tmp_names);
+
+			return true;
+		}
+
 		bool Search(int feat_dim, int feat_num, const float* feat, std::vector<int>& out_ids,
 			std::vector<float>& out_scores, std::vector<std::string>& out_names, int max_num, int max_thread_num) const
 		{
@@ -104,10 +161,16 @@ namespace ZQ
 		bool _load_feats(const char* file)
 		{
 			FILE* in = 0;
+#if defined(_WIN32)
 			if (0 != fopen_s(&in, file, "rb"))
 			{
 				return false;
 			}
+#else
+			in = fopen(file, "rb");
+			if (in == NULL)
+				return false;
+#endif
 
 			if (1 != fread(&dim, sizeof(int), 1, in) || dim <= 0)
 			{
@@ -164,8 +227,14 @@ namespace ZQ
 		bool _load_names(const char* file)
 		{
 			FILE* in = 0;
+#if defined(_WIN32)
 			if (0 != fopen_s(&in, file, "r"))
 				return false;
+#else
+			in = fopen(file, "r");
+			if (in == NULL)
+				return false;
+#endif
 			char line[200] = { 0 };
 			while (true)
 			{
@@ -189,12 +258,12 @@ namespace ZQ
 			if (person_num <= 0 || feat_dim != dim || feat_num <= 0)
 				return false;
 
-			int widthStep = (sizeof(float)*dim + FEAT_ALIGNED_SIZE-1) / FEAT_ALIGNED_SIZE * FEAT_ALIGNED_SIZE;
+			__int64 widthStep = (sizeof(float)*dim + FEAT_ALIGNED_SIZE-1) / FEAT_ALIGNED_SIZE * FEAT_ALIGNED_SIZE;
 
 			float* feat_aligned = (float*)_aligned_malloc(widthStep*feat_num, FEAT_ALIGNED_SIZE);
 			if (feat_aligned == 0)
 				return false;
-			for(int i = 0;i < feat_num;i++)
+			for(__int64 i = 0;i < feat_num;i++)
 				memcpy(((char*)feat_aligned)+widthStep*i, feat+feat_dim*i, sizeof(float)*dim);
 			float* scores = (float*)malloc(sizeof(float)*total_face_num);
 			if (scores == 0)
@@ -202,7 +271,7 @@ namespace ZQ
 				_aligned_free(feat_aligned);
 				return false;
 			}
-			for (int i = 0; i < total_face_num; i++)
+			for (__int64 i = 0; i < total_face_num; i++)
 				scores[i] = -FLT_MAX;
 
 			int num_procs = omp_get_num_procs();
@@ -210,34 +279,34 @@ namespace ZQ
 
 			if (real_threads == 1)
 			{
-				for (int j = 0; j < feat_num; j++)
+				for (__int64 j = 0; j < feat_num; j++)
 				{
 					float* tmp_feat = (float*)(((char*)feat_aligned) + widthStep*j);
-					int chunk_size = (total_face_num + real_threads - 1) / real_threads;
+					__int64 chunk_size = (total_face_num + real_threads - 1) / real_threads;
 					if (dim == 128)
 					{
-						for (int i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i],ZQ_FaceRecognizerSphereFace::_cal_similarity_avx_dim128(tmp_feat, all_face_feats + i*dim));
 						}
 					}
 					else if (dim == 256)
 					{
-						for (int i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i], ZQ_FaceRecognizerSphereFace::_cal_similarity_avx_dim256(tmp_feat, all_face_feats + i*dim));
 						}
 					}
 					else if (dim == 512)
 					{
-						for (int i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i], ZQ_FaceRecognizerSphereFace::_cal_similarity_avx_dim512(tmp_feat, all_face_feats + i*dim));
 						}
 					}
 					else
 					{
-						for (long long i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i], ZQ_MathBase::DotProduct(dim, tmp_feat, all_face_feats + i*dim));
 						}
@@ -246,14 +315,14 @@ namespace ZQ
 			}
 			else
 			{
-				for (int j = 0; j < feat_num; j++)
+				for (__int64 j = 0; j < feat_num; j++)
 				{
 					float* tmp_feat = (float*)(((char*)feat_aligned) + widthStep*j);
-					int chunk_size = (total_face_num + real_threads - 1) / real_threads;
+					__int64 chunk_size = (total_face_num + real_threads - 1) / real_threads;
 					if (dim == 128)
 					{
 #pragma omp parallel for schedule(static, chunk_size) num_threads(real_threads)
-						for (int i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i], ZQ_FaceRecognizerSphereFace::_cal_similarity_avx_dim128(tmp_feat, all_face_feats + i*dim));
 						}
@@ -261,7 +330,7 @@ namespace ZQ
 					else if (dim == 256)
 					{
 #pragma omp parallel for schedule(static, chunk_size) num_threads(real_threads)
-						for (int i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i], ZQ_FaceRecognizerSphereFace::_cal_similarity_avx_dim256(tmp_feat, all_face_feats + i*dim));
 						}
@@ -269,7 +338,7 @@ namespace ZQ
 					else if (dim == 512)
 					{
 #pragma omp parallel for schedule(static, chunk_size) num_threads(real_threads)
-						for (int i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i], ZQ_FaceRecognizerSphereFace::_cal_similarity_avx_dim512(tmp_feat, all_face_feats + i*dim));
 						}
@@ -278,7 +347,7 @@ namespace ZQ
 					else
 					{
 #pragma omp parallel for schedule(static, chunk_size) num_threads(real_threads)
-						for (long long i = 0; i < total_face_num; i++)
+						for (__int64 i = 0; i < total_face_num; i++)
 						{
 							scores[i] = __max(scores[i], ZQ_MathBase::DotProduct(dim, tmp_feat, all_face_feats + i*dim));
 						}
@@ -297,10 +366,10 @@ namespace ZQ
 
 			if (real_threads == 1)
 			{
-				for (int i = 0; i < person_num; i++)
+				for (__int64 i = 0; i < person_num; i++)
 				{
 					float tmp = -FLT_MAX;
-					for (long long j = person_face_offset[i]; j < person_face_offset[i]+person_face_num[i]; j++)
+					for (__int64 j = person_face_offset[i]; j < person_face_offset[i]+person_face_num[i]; j++)
 					{
 						tmp = __max(tmp, scores[j]);
 					}
@@ -311,10 +380,10 @@ namespace ZQ
 			{
 				int chunk_size = (person_num + real_threads - 1) / real_threads;
 #pragma omp parallel for schedule(static, chunk_size) num_threads(real_threads)
-				for (int i = 0; i < person_num; i++)
+				for (__int64 i = 0; i < person_num; i++)
 				{
 					float tmp = -FLT_MAX;
-					for (long long j = person_face_offset[i]; j < person_face_offset[i] + person_face_num[i]; j++)
+					for (__int64 j = person_face_offset[i]; j < person_face_offset[i] + person_face_num[i]; j++)
 					{
 						tmp = __max(tmp, scores[j]);
 					}
@@ -332,7 +401,7 @@ namespace ZQ
 				free(max_scores);
 				return false;
 			}
-			for (int i = 0; i < person_num; i++)
+			for (__int64 i = 0; i < person_num; i++)
 			{
 				ids[i] = i;
 			}
@@ -341,11 +410,11 @@ namespace ZQ
 			out_ids.clear();
 			out_scores.clear();
 			out_names.clear();
-			for (int i = 0; i < __min(max_num, person_num); i++)
+			for (__int64 i = 0; i < __min(max_num, person_num); i++)
 			{
 				float cur_max_score = max_scores[i];
 				int max_id = i;
-				for (int j = i + 1; j < person_num; j++)
+				for (__int64 j = i + 1; j < person_num; j++)
 				{
 					if (cur_max_score < max_scores[j])
 					{
@@ -387,19 +456,38 @@ namespace ZQ
 			__int64& all_pair_num, __int64& same_pair_num, __int64& notsame_pair_num, int max_thread_num, bool quantization) const
 		{
 			FILE* out1 = 0;
+#if defined(_WIN32)
 			if (0 != fopen_s(&out1, out_score_file.c_str(), "wb"))
 			{
 				printf("failed to create file %s\n", out_score_file.c_str());
 				return false;
 			}
+#else
+			out1 = fopen(out_score_file.c_str(), "wb");
+			if (out1 == NULL)
+			{
+				printf("failed to create file %s\n", out_score_file.c_str());
+				return false;
+			}
+#endif
 
 			FILE* out2 = 0;
+#if defined(_WIN32)
 			if (0 != fopen_s(&out2, out_flag_file.c_str(), "wb"))
 			{
 				printf("failed to create file %s\n", out_flag_file.c_str());
 				fclose(out1);
 				return false;
 			}
+#else
+			out2 = fopen(out_flag_file.c_str(), "wb");
+			if (out2 == NULL)
+			{
+				printf("failed to create file %s\n", out_flag_file.c_str());
+				fclose(out1);
+				return false;
+			}
+#endif
 			
 			all_pair_num = total_face_num *(total_face_num - 1) / 2;
 			same_pair_num = 0;
@@ -550,10 +638,18 @@ namespace ZQ
 			}
 
 			FILE* out = 0;
+#if defined(_WIN32)
 			if (0 != fopen_s(&out, out_file.c_str(), "w"))
 			{
 				return false;
 			}
+#else
+			out = fopen(out_file.c_str(), "w");
+			if (out == NULL)
+			{
+				return false;
+			}
+#endif
 			for (__int64 i = 0; i < num; i++)
 			{
 				fprintf(out, "%.3f %s %s\n", scores[i], names[repeat_pairs[i].first].c_str(), names[repeat_pairs[i].second].c_str());

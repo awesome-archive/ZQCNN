@@ -1,11 +1,10 @@
-#if defined(_WIN32)
 #include "ZQ_FaceDatabaseMaker.h"
 #include "ZQ_FaceRecognizerArcFaceZQCNN.h"
 #include "ZQ_FaceRecognizerSphereFaceZQCNN.h"
 #include "ZQ_MergeSort.h"
 #include <stdio.h>
-#include <io.h>
 #include "ZQ_CNN_CompileConfig.h"
+#if defined(_WIN32)
 #if ZQ_CNN_USE_BLAS_GEMM
 #include <openblas\cblas.h>
 #pragma comment(lib,"libopenblas.lib")
@@ -14,6 +13,14 @@
 #pragma comment(lib,"mklml.lib")
 #else
 #pragma comment(lib,"ZQ_GEMM.lib")
+#endif
+#else //not win32
+#if ZQ_CNN_USE_BLAS_GEMM
+#include <openblas\cblas.h>
+#elif ZQ_CNN_USE_MKL_GEMM
+#include <mkl\mkl.h>
+#else
+#endif
 #endif
 using namespace ZQ;
 
@@ -52,47 +59,47 @@ int main(int argc, char** argv)
 		printf("%s evaluate_tar_far [args]\n",argv[0]);
 		return EXIT_FAILURE;
 	}
-	if (_strcmpi(argv[1], "make") == 0)
+	if (strcmp(argv[1], "make") == 0)
 	{
 		return make_database(argc, argv, false);
 	}
-	else if (_strcmpi(argv[1], "make_compact") == 0)
+	else if (strcmp(argv[1], "make_compact") == 0)
 	{
 		return make_database(argc, argv, true);
 	}
-	else if (_strcmpi(argv[1], "select_subset") == 0)
+	else if (strcmp(argv[1], "select_subset") == 0)
 	{
 		return select_subset(argc, argv);
 	}
-	else if (_strcmpi(argv[1], "select_subset_desired_num") == 0)
+	else if (strcmp(argv[1], "select_subset_desired_num") == 0)
 	{
 		return select_subset_desired_num(argc, argv);
 	}
-	else if (_strcmpi(argv[1], "copy_subset_to_fold") == 0)
+	else if (strcmp(argv[1], "copy_subset_to_fold") == 0)
 	{
 		return copy_subset_to_fold(argc, argv);
 	}
-	else if (_strcmpi(argv[1], "compute_similarity") == 0)
+	else if (strcmp(argv[1], "compute_similarity") == 0)
 	{
 		return compute_similarity_all_pairs(argc, argv, false);
 	}
-	else if (_strcmpi(argv[1], "compute_similarity_compact") == 0)
+	else if (strcmp(argv[1], "compute_similarity_compact") == 0)
 	{
 		return compute_similarity_all_pairs(argc, argv, true);
 	}
-	else if (_strcmpi(argv[1], "detect_repeat") == 0)
+	else if (strcmp(argv[1], "detect_repeat") == 0)
 	{
 		return detect_repeat_person(argc, argv, false);
 	}
-	else if (_strcmpi(argv[1], "detect_repeat_compact") == 0)
+	else if (strcmp(argv[1], "detect_repeat_compact") == 0)
 	{
 		return detect_repeat_person(argc, argv, true);
 	}
-	else if (_strcmpi(argv[1], "detect_lowest_pair") == 0)
+	else if (strcmp(argv[1], "detect_lowest_pair") == 0)
 	{
 		return detect_lowest_pair(argc, argv);
 	}
-	else if (_strcmpi(argv[1], "evaluate_tar_far") == 0)
+	else if (strcmp(argv[1], "evaluate_tar_far") == 0)
 	{
 		return evaluate_tar_far(argc, argv);
 	}
@@ -169,14 +176,14 @@ int make_database(int argc, char** argv, bool compact)
 
 		if (compact)
 		{
-			if (!ZQ_FaceDatabaseMaker::MakeDatabaseCompactAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num))
+			if (!ZQ_FaceDatabaseMaker::MakeDatabaseCompactAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num, false))
 			{
 				return EXIT_FAILURE;
 			}
 		}
 		else
 		{
-			if (!ZQ_FaceDatabaseMaker::MakeDatabaseAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num))
+			if (!ZQ_FaceDatabaseMaker::MakeDatabaseAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num, false))
 			{
 				return EXIT_FAILURE;
 			}
@@ -198,7 +205,7 @@ int make_database(int argc, char** argv, bool compact)
 		}
 		if (compact)
 		{
-			if (!ZQ_FaceDatabaseMaker::MakeDatabaseCompactAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num))
+			if (!ZQ_FaceDatabaseMaker::MakeDatabaseCompactAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num, false))
 			{
 				return EXIT_FAILURE;
 			}
@@ -206,7 +213,7 @@ int make_database(int argc, char** argv, bool compact)
 		}
 		else
 		{
-			if (!ZQ_FaceDatabaseMaker::MakeDatabaseAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num))
+			if (!ZQ_FaceDatabaseMaker::MakeDatabaseAlreadyCropped(recognizers, database_root, feats_file, names_file, type, show, max_thread_num, false))
 			{
 				return EXIT_FAILURE;
 			}
@@ -292,21 +299,31 @@ int select_subset_desired_num(int argc, char** argv)
 	return EXIT_SUCCESS;
 }
 
-bool zq_copy_file(const char *src, const char *dst, char* buf, int buf_size) 
+bool zq_copy_file(const char *src, const char *dst, char* buf, int buf_size)
 {
 	FILE* in = 0, *out = 0;
+#if defined(_WIN32)
 	if (0 != fopen_s(&in, src, "rb"))
+#else
+	in = fopen(src, "rb");
+	if (in == NULL)
+#endif
 	{
 		printf("failed to open %s\n", src);
 		return false;
 	}
+#if defined(_WIN32)
 	if (0 != fopen_s(&out, dst, "wb"))
+#else
+	out = fopen(dst, "wb");
+	if (out == NULL)
+#endif
 	{
 		printf("failed to create %s\n", dst);
 		fclose(in);
 		return false;
 	}
-	
+
 	int read_count = 0;
 	while ((read_count = fread(buf, 1, buf_size, in)) > 0)
 		fwrite(buf, 1, read_count, out);
@@ -325,7 +342,12 @@ int copy_subset_to_fold(int argc, char** argv)
 	const std::string list_file = argv[2];
 	const std::string dst_fold = argv[3];
 	FILE* in = 0;
+#if defined(_WIN32)
 	if (0 != fopen_s(&in, list_file.c_str(), "r"))
+#else
+	in = fopen(list_file.c_str(), "r");
+	if (in == NULL)
+#endif
 	{
 		printf("failed to open %s\n", list_file.c_str());
 		return EXIT_FAILURE;
@@ -363,7 +385,7 @@ int copy_subset_to_fold(int argc, char** argv)
 		int j1, j2;
 		for (j1 = len - 1; j1 >= 0; j1--)
 		{
-			if (buf[j1] == '\\')
+			if (buf[j1] == '\\' || buf[j1] == '/')
 			{
 				found1 = true;
 				break;
@@ -373,7 +395,7 @@ int copy_subset_to_fold(int argc, char** argv)
 		{
 			for (j2 = j1 - 1; j2 >= 0; j2--)
 			{
-				if (buf[j2] == '\\')
+				if (buf[j2] == '\\' || buf[j2] == '/')
 				{
 					found2 = true;
 					break;
@@ -386,18 +408,34 @@ int copy_subset_to_fold(int argc, char** argv)
 		}
 		if (found2)
 		{
+#if defined(_WIN32)
 			strncpy_s(person_name, BUF_LEN - 1, buf + j2 + 1, j1 - j2 - 1);
+#else
+			strncpy(person_name, buf + j2 + 1, j1 - j2 - 1);
+#endif
 			person_name[j1 - j2 - 1] = '\0';
 			oss.str("");
+#if defined(_WIN32)
 			oss << dst_fold << "\\" << std::string(person_name);
+#else
+			oss << dst_fold << "/" << std::string(person_name);
+#endif
 			std::string dst_person_fold = oss.str();
+#if defined(_WIN32)
 			if (0 != _access(dst_person_fold.c_str(), 0))
+#else
+			if (0 != access(dst_person_fold.c_str(), 0))
+#endif
 			{
 				oss.str("");
 				oss << "mkdir " << dst_person_fold;
 				system(oss.str().c_str());
 			}
+#if defined(_WIN32)
 			dst_person_fold.append("\\");
+#else
+			dst_person_fold.append("/");
+#endif
 			dst_person_fold.append(buf + j1 + 1);
 			copy_done = zq_copy_file(buf, dst_person_fold.c_str(), &buffer_for_copy[0], buffer_for_copy_size);
 		}
@@ -475,7 +513,12 @@ int compute_similarity_all_pairs(int argc, char**argv, bool compact)
 	}
 	
 	FILE* out = 0;
+#if defined(_WIN32)
 	if (0 != fopen_s(&out, out_info_file.c_str(), "w"))
+#else
+	out = fopen(out_info_file.c_str(), "w");
+	if (out == NULL)
+#endif
 	{
 		printf("failed to create file %s\n", out_info_file.c_str());
 		return EXIT_FAILURE;
@@ -594,18 +637,29 @@ int evaluate_tar_far(int argc, char** argv)
 
 	std::string dst_score_file = score_file + ".sort";
 	std::string dst_flag_file = flag_file + ".sort";
-	
+
 	__int64 all_pair_num = 0, same_pair_num = 0, notsame_pair_num = 0;
 	FILE* in = 0;
+#if defined(_WIN32)
 	if (0 != fopen_s(&in, info_file.c_str(), "r"))
+#else
+	in = fopen(info_file.c_str(), "r");
+	if (in == NULL)
+#endif
 	{
 		printf("failed to open %s\n", info_file.c_str());
 		return EXIT_FAILURE;
 	}
 
-	if (1 != fscanf_s(in, "%lld",&all_pair_num)
+#if defined(_WIN32)
+	if (1 != fscanf_s(in, "%lld", &all_pair_num)
 		|| 1 != fscanf_s(in, "%lld", &same_pair_num)
 		|| 1 != fscanf_s(in, "%lld", &notsame_pair_num))
+#else
+	if (1 != fscanf(in, "%lld", &all_pair_num)
+		|| 1 != fscanf(in, "%lld", &same_pair_num)
+		|| 1 != fscanf(in, "%lld", &notsame_pair_num))
+#endif
 	{
 		printf("failed to read info from %s\n", info_file.c_str());
 		return EXIT_FAILURE;
@@ -634,12 +688,22 @@ int evaluate_tar_far(int argc, char** argv)
 	}
 
 	FILE* in1 = 0, *in2 = 0;
+#if defined(_WIN32)
 	if (0 != fopen_s(&in1, dst_score_file.c_str(), "rb"))
+#else
+	in1 = fopen(dst_score_file.c_str(), "rb");
+	if (in1 == NULL)
+#endif
 	{
 		printf("failed to open %s\n", dst_score_file.c_str());
 		return EXIT_FAILURE;
 	}
+#if defined(_WIN32)
 	if (0 != fopen_s(&in2, dst_flag_file.c_str(), "rb"))
+#else
+	in2 = fopen(dst_flag_file.c_str(), "rb");
+	if (in2 == NULL)
+#endif
 	{
 		printf("failed to open %s\n", dst_flag_file.c_str());
 		fclose(in1);
@@ -647,14 +711,15 @@ int evaluate_tar_far(int argc, char** argv)
 	}
 	/**************/
 
+
 	int cur_stage = 0;
-	double stage_far_thresh[] = 
+	double stage_far_thresh[] =
 	{
-		1e-8, 2*1e-8, 5*1e-8, 
-		1e-7, 2*1e-7, 5*1e-7,
-		1e-6, 2*1e-6, 5*1e-6,
-		1e-5, 2*1e-5, 5*1e-5,
-		1e-4, 2*1e-4, 5*1e-4,
+		1e-8, 2 * 1e-8, 5 * 1e-8,
+		1e-7, 2 * 1e-7, 5 * 1e-7,
+		1e-6, 2 * 1e-6, 5 * 1e-6,
+		1e-5, 2 * 1e-5, 5 * 1e-5,
+		1e-4, 2 * 1e-4, 5 * 1e-4,
 		1e-3
 	};
 	int stage_num = sizeof(stage_far_thresh) / sizeof(double);
@@ -677,7 +742,7 @@ int evaluate_tar_far(int argc, char** argv)
 	__int64 rest_count = all_pair_num;
 	while (rest_count > 0)
 	{
-		if(quantization)
+		if (quantization)
 			read_count1 = fread(&short_score_buffer[0], sizeof(short), buffer_size, in1);
 		else
 			read_count1 = fread(&score_buffer[0], sizeof(float), buffer_size, in1);
@@ -696,7 +761,7 @@ int evaluate_tar_far(int argc, char** argv)
 			fclose(in2);
 			return EXIT_FAILURE;
 		}
-		if(read_count1 != read_count2
+		if (read_count1 != read_count2
 			|| (read_count1 != buffer_size && read_count1 != rest_count))
 		{
 			printf("score_file flag_file info_file not match\n");
@@ -711,9 +776,9 @@ int evaluate_tar_far(int argc, char** argv)
 				break;
 			if (cur_far_num > stage_num_thresh[cur_stage])
 			{
-				printf("thresh = %8.5f, far = %12e, tar = %.5f\n", 
-					quantization ? ((float)short_score_buffer[i]/SHRT_MAX): score_buffer[i], 
-					(double)cur_far_num/notsame_pair_num,
+				printf("thresh = %8.5f, far = %12e, tar = %.5f\n",
+					quantization ? ((float)short_score_buffer[i] / SHRT_MAX) : score_buffer[i],
+					(double)cur_far_num / notsame_pair_num,
 					(double)cur_tar_num / same_pair_num);
 				cur_stage++;
 			}
@@ -750,12 +815,3 @@ int load_database_compact(ZQ_FaceDatabaseCompact& database, const std::string& f
 		return EXIT_FAILURE;
 }
 
-
-#else
-#include <stdio.h>
-int main(int argc, const char** argv)
-{
-	printf("%s only support windows\n", argv[0]);
-	return 0;
-}
-#endif

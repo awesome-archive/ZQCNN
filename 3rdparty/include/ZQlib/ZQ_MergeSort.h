@@ -80,7 +80,11 @@ namespace ZQ
 				{
 					if (cur_total_off == 0)
 					{
+#if defined(_WIN32)
 						_fseeki64(f_ptr, offset, SEEK_SET);
+#else
+						fseek(f_ptr, offset, SEEK_SET);
+#endif
 						__int64 need_read_num = __min(buffer_size, total_num - cur_idx);
 						__int64 readed_num = fread(val_buffer,elt_size , need_read_num, f_ptr);
 						if (need_read_num != readed_num)
@@ -99,7 +103,11 @@ namespace ZQ
 					{
 						if (cur_idx < total_num)
 						{
+#if defined(_WIN32)
 							_fseeki64(f_ptr, offset + cur_idx * elt_size, SEEK_SET);
+#else
+							fseek(f_ptr, offset + cur_idx * elt_size, SEEK_SET);
+#endif
 							__int64 need_read_num = __min(buffer_size, total_num - cur_idx);
 							if (need_read_num > 0)
 							{
@@ -127,7 +135,11 @@ namespace ZQ
 				cur_total_off++;
 				if (cur_idx+cur_buffer_off == total_num)
 				{
+#if defined(_WIN32)
 					_fseeki64(f_ptr, offset + cur_idx * elt_size, SEEK_SET);
+#else
+					fseek(f_ptr, offset + cur_idx * elt_size, SEEK_SET);
+#endif
 					if (cur_buffer_off != fwrite(val_buffer, elt_size, cur_buffer_off, f_ptr))
 					{
 						return false;
@@ -136,7 +148,11 @@ namespace ZQ
 				}
 				else if(cur_buffer_off == buffer_size)
 				{
+#if defined(_WIN32)
 					_fseeki64(f_ptr, offset + cur_idx * elt_size, SEEK_SET);
+#else
+					fseek(f_ptr, offset + cur_idx * elt_size, SEEK_SET);
+#endif
 					if (buffer_size != fwrite(val_buffer, elt_size, buffer_size, f_ptr))
 					{
 						return false;
@@ -367,12 +383,23 @@ namespace ZQ
 		int max_mem_size_in_KB)
 	{
 		FILE* in = 0;
+#if defined(_WIN32)
 		if (0 != fopen_s(&in, src_val_file, "rb"))
 			return false;
+#else
+		in = fopen(src_val_file, "rb");
+		if (in == 0)
+			return false;
+#endif
 
 		__int64 val_size = sizeof(T);
+#if defined(_WIN32)
 		_fseeki64(in, 0, SEEK_END);
 		__int64 total_len = _ftelli64(in);
+#else
+		fseek(in, 0, SEEK_END);
+		__int64 total_len = ftell(in);
+#endif
 		if (total_len % val_size != 0 || total_len == 0)
 		{
 			fclose(in);
@@ -380,7 +407,11 @@ namespace ZQ
 		}
 
 		__int64 num = total_len / val_size;
+#if defined(_WIN32)
 		_fseeki64(in, 0, SEEK_SET);
+#else
+		fseek(in, 0, SEEK_SET);
+#endif
 
 
 		max_mem_size_in_KB = __max(max_mem_size_in_KB, 1);
@@ -405,33 +436,57 @@ namespace ZQ
 		};
 		FILE* tmp_file[2] = { 0 };
 		
+#if defined(_WIN32)
 		if (0 != fopen_s(&tmp_file[0], tmp_filename[0], "wb+"))
+#else
+		tmp_file[0] = fopen(tmp_filename[0], "wb+");
+		if (tmp_file[0] == 0)
+#endif
 		{
 			fclose(in);
 			printf("failed to create file %s\n", tmp_filename[0]);
 			return false;
 		}
+#if defined(_WIN32)
 		if (0 != _fseeki64(tmp_file[0], total_len-1, SEEK_SET)
 			|| EOF == fputc('\0', tmp_file[0]))
+#else
+		if (0 != fseek(tmp_file[0], total_len - 1, SEEK_SET)
+			|| EOF == fputc('\0', tmp_file[0]))
+#endif
 		{
 			fclose(in);
 			fclose(tmp_file[0]);
 			printf("failed to allocate space for file %s\n", tmp_filename[0]);
 			return false;
 		}
+#if defined(_WIN32)
 		_fseeki64(tmp_file[0], 0, SEEK_SET);
+#else
+		fseek(tmp_file[0], 0, SEEK_SET);
+#endif
 
 		if (rest_iter > 0)
 		{
+#if defined(_WIN32)
 			if (0 != fopen_s(&tmp_file[1], tmp_filename[1], "wb+"))
+#else
+			tmp_file[1] = fopen(tmp_filename[1], "wb+");
+			if (tmp_file[1] == 0)
+#endif
 			{
 				fclose(in);
 				fclose(tmp_file[0]);
 				printf("failed to create file %s\n", tmp_filename[1]);
 				return false;
 			}
+#if defined(_WIN32)
 			if (0 != _fseeki64(tmp_file[1], total_len - 1, SEEK_SET)
 				|| EOF == fputc('\0', tmp_file[1]))
+#else
+			if (0 != fseek(tmp_file[1], total_len - 1, SEEK_SET)
+				|| EOF == fputc('\0', tmp_file[1]))
+#endif
 			{
 				fclose(in);
 				fclose(tmp_file[0]);
@@ -439,7 +494,11 @@ namespace ZQ
 				printf("failed to allocate space for file %s\n", tmp_filename[1]);
 				return false;
 			}
+#if defined(_WIN32)
 			_fseeki64(tmp_file[1], 0, SEEK_SET);
+#else
+			fseek(tmp_file[1], 0, SEEK_SET);
+#endif
 		}
 		
 		/* allocate file end  */
@@ -467,12 +526,23 @@ namespace ZQ
 		int max_mem_size_in_KB)
 	{
 		FILE* in = 0, *in_data = 0;
+#if defined(_WIN32)
 		if (0 != fopen_s(&in, src_val_file, "rb"))
 			return false;
+#else
+		in = fopen(src_val_file, "rb");
+		if (in == 0)
+			return false;
+#endif
 
 		__int64 val_size = sizeof(T);
+#if defined(_WIN32)
 		_fseeki64(in, 0, SEEK_END);
 		__int64 total_len = _ftelli64(in);
+#else
+		fseek(in, 0, SEEK_END);
+		__int64 total_len = ftell(in);
+#endif
 		if (total_len % val_size != 0 || total_len == 0)
 		{
 			fclose(in);
@@ -480,19 +550,37 @@ namespace ZQ
 		}
 
 		__int64 num = total_len / val_size;
+#if defined(_WIN32)
 		_fseeki64(in, 0, SEEK_SET);
+#else
+		fseek(in, 0, SEEK_SET);
+#endif
 
+#if defined(_WIN32)
 		if (0 != fopen_s(&in_data, src_data_file, "rb"))
 			return false;
-
+#else
+		in_data = fopen(src_data_file, "rb");
+		if (in_data == 0)
+			return false;
+#endif
+#if defined(_WIN32)
 		_fseeki64(in_data, 0, SEEK_END);
 		if (num*data_elt_size != _ftelli64(in_data))
+#else
+		fseek(in_data, 0, SEEK_END);
+		if (num*data_elt_size != ftell(in_data))
+#endif
 		{
 			fclose(in);
 			fclose(in_data);
 			return false;
 		}
+#if defined(_WIN32)
 		_fseeki64(in_data, 0, SEEK_SET);
+#else
+		fseek(in_data, 0, SEEK_SET);
+#endif
 
 		max_mem_size_in_KB = __max(max_mem_size_in_KB, 1);
 		__int64 max_block_size = (__int64)max_mem_size_in_KB * 1024 / (4 * (val_size+data_elt_size));
@@ -522,31 +610,55 @@ namespace ZQ
 		FILE* tmp_file[2] = { 0 };
 		FILE* tmp_data_file[2] = { 0 };
 
+#if defined(_WIN32)
 		if (0 != fopen_s(&tmp_file[0], tmp_filename[0], "wb+"))
+#else
+		tmp_file[0] = fopen(tmp_filename[0], "wb+");
+		if (tmp_file[0] == 0)
+#endif
 		{
 			fclose(in);
 			printf("failed to create file %s\n", tmp_filename[0]);
 			return false;
 		}
+#if defined(_WIN32)
 		if (0 != _fseeki64(tmp_file[0], total_len - 1, SEEK_SET)
 			|| EOF == fputc('\0', tmp_file[0]))
+#else
+		if (0 != fseek(tmp_file[0], total_len - 1, SEEK_SET)
+			|| EOF == fputc('\0', tmp_file[0]))
+#endif
 		{
 			fclose(in);
 			fclose(tmp_file[0]);
 			printf("failed to allocate space for file %s\n", tmp_filename[0]);
 			return false;
 		}
+#if defined(_WIN32)
 		_fseeki64(tmp_file[0], 0, SEEK_SET);
+#else
+		fseek(tmp_file[0], 0, SEEK_SET);
+#endif
 
+#if defined(_WIN32)
 		if (0 != fopen_s(&tmp_data_file[0], tmp_data_filename[0], "wb+"))
+#else
+		tmp_data_file[0] = fopen(tmp_data_filename[0], "wb+");
+		if (tmp_data_file[0] == 0)
+#endif
 		{
 			fclose(in);
 			fclose(tmp_file[0]);
 			printf("failed to create file %s\n", tmp_data_filename[0]);
 			return false;
 		}
+#if defined(_WIN32)
 		if (0 != _fseeki64(tmp_data_file[0], num*data_elt_size - 1, SEEK_SET)
 			|| EOF == fputc('\0', tmp_data_file[0]))
+#else
+		if (0 != fseek(tmp_data_file[0], num*data_elt_size - 1, SEEK_SET)
+			|| EOF == fputc('\0', tmp_data_file[0]))
+#endif
 		{
 			fclose(in);
 			fclose(tmp_file[0]);
@@ -554,11 +666,20 @@ namespace ZQ
 			printf("failed to allocate space for file %s\n", tmp_data_filename[0]);
 			return false;
 		}
+#if defined(_WIN32)
 		_fseeki64(tmp_data_file[0], 0, SEEK_SET);
+#else
+		fseek(tmp_data_file[0], 0, SEEK_SET);
+#endif
 
 		if (rest_iter > 0)
 		{
+#if defined(_WIN32)
 			if (0 != fopen_s(&tmp_file[1], tmp_filename[1], "wb+"))
+#else
+			tmp_file[1] = fopen(tmp_filename[1], "wb+");
+			if (tmp_file[1] == 0)
+#endif
 			{
 				fclose(in);
 				fclose(tmp_file[0]);
@@ -566,8 +687,13 @@ namespace ZQ
 				printf("failed to create file %s\n", tmp_filename[1]);
 				return false;
 			}
+#if defined(_WIN32)
 			if (0 != _fseeki64(tmp_file[1], total_len - 1, SEEK_SET)
 				|| EOF == fputc('\0', tmp_file[1]))
+#else
+			if (0 != fseek(tmp_file[1], total_len - 1, SEEK_SET)
+				|| EOF == fputc('\0', tmp_file[1]))
+#endif
 			{
 				fclose(in);
 				fclose(tmp_file[0]);
@@ -576,9 +702,18 @@ namespace ZQ
 				printf("failed to allocate space for file %s\n", tmp_filename[1]);
 				return false;
 			}
+#if defined(_WIN32)
 			_fseeki64(tmp_file[1], 0, SEEK_SET);
+#else
+			fseek(tmp_file[1], 0, SEEK_SET);
+#endif
 
+#if defined(_WIN32)
 			if (0 != fopen_s(&tmp_data_file[1], tmp_data_filename[1], "wb+"))
+#else
+			tmp_data_file[1] = fopen(tmp_data_filename[1], "wb+");
+			if (tmp_data_file[1] == 0)
+#endif
 			{
 				fclose(in);
 				fclose(tmp_file[0]);
@@ -587,8 +722,13 @@ namespace ZQ
 				printf("failed to create file %s\n", tmp_data_filename[1]);
 				return false;
 			}
+#if defined(_WIN32)
 			if (0 != _fseeki64(tmp_data_file[1], num*data_elt_size - 1, SEEK_SET)
 				|| EOF == fputc('\0', tmp_data_file[1]))
+#else
+			if (0 != fseek(tmp_data_file[1], num*data_elt_size - 1, SEEK_SET)
+				|| EOF == fputc('\0', tmp_data_file[1]))
+#endif
 			{
 				fclose(in);
 				fclose(tmp_file[0]);
@@ -598,7 +738,11 @@ namespace ZQ
 				printf("failed to allocate space for file %s\n", tmp_data_filename[1]);
 				return false;
 			}
+#if defined(_WIN32)
 			_fseeki64(tmp_data_file[1], 0, SEEK_SET);
+#else
+			fseek(tmp_data_file[1], 0, SEEK_SET);
+#endif
 		}
 
 		/* allocate file end  */
@@ -630,7 +774,11 @@ namespace ZQ
 		int tmp_file_idx = rest_iter % 2 == 0 ? 0 : 1;
 
 		/* in-core sort begin */
+#if defined(_WIN32)
 		_fseeki64(in_val_file, 0, SEEK_SET);
+#else
+		fseek(in_val_file, 0, SEEK_SET);
+#endif
 		__int64 rest = num % block_size;
 		__int64 nBlock = num / block_size;
 		T* val_block_buffer = (T*)malloc(val_size*block_size * 2);
@@ -724,11 +872,19 @@ namespace ZQ
 			}
 		}
 		fflush(tmp_val_files[tmp_file_idx]);
+#if defined(_WIN32)
 		_fseeki64(tmp_val_files[tmp_file_idx], 0, SEEK_SET);
+#else
+		fseek(tmp_val_files[tmp_file_idx], 0, SEEK_SET);
+#endif
 		if (has_data)
 		{
 			fflush(tmp_data_files[tmp_file_idx]);
+#if defined(_WIN32)
 			_fseeki64(tmp_data_files[tmp_file_idx], 0, SEEK_SET);
+#else
+			fseek(tmp_data_files[tmp_file_idx], 0, SEEK_SET);
+#endif
 		}
 		
 		/* in-core sort end */
@@ -745,12 +901,22 @@ namespace ZQ
 			printf("%d/%d %lld\n", rest_it+1, rest_iter, tmp_block_size);
 			int other_file_idx = 1 - tmp_file_idx;
 			//
+#if defined(_WIN32)
 			_fseeki64(tmp_val_files[tmp_file_idx], 0, SEEK_SET);
 			_fseeki64(tmp_val_files[other_file_idx], 0, SEEK_SET);
+#else
+			fseek(tmp_val_files[tmp_file_idx], 0, SEEK_SET);
+			fseek(tmp_val_files[other_file_idx], 0, SEEK_SET);
+#endif
 			if (has_data)
 			{
+#if defined(_WIN32)
 				_fseeki64(tmp_data_files[tmp_file_idx], 0, SEEK_SET);
 				_fseeki64(tmp_data_files[other_file_idx], 0, SEEK_SET);
+#else
+				fseek(tmp_data_files[tmp_file_idx], 0, SEEK_SET);
+				fseek(tmp_data_files[other_file_idx], 0, SEEK_SET);
+#endif
 			}
 
 			__int64 tmp_nBlock = (num + tmp_block_size - 1) / tmp_block_size;

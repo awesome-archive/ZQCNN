@@ -69,7 +69,12 @@ namespace ZQ
 				break;
 			}
 			
-			if (GetCropHeight() == 160 && GetCropWidth() == 160)
+			if (GetCropHeight() == 256 && GetCropWidth() == 256)
+			{
+				if (!ZQ_FaceRecognizerUtils::CropImage_256x256_dot85<float>(input, face5point, crop))
+					return false;
+			}
+			else if (GetCropHeight() == 160 && GetCropWidth() == 160)
 			{
 				if (!ZQ_FaceRecognizerUtils::CropImage_160x160<float>(input, face5point, crop))
 					return false;
@@ -205,7 +210,7 @@ namespace ZQ
 		static float _cal_similarity_avx_dim128(const float* pt1, const float* pt2)
 		{
 #if ZQ_CNN_USE_SSETYPE >= ZQ_CNN_SSETYPE_AVX
-			_declspec(align(32)) float q[8];
+			ZQ_DECLSPEC_ALIGN32 float q[8];
 			__m256 sum_vec = _mm256_mul_ps(_mm256_load_ps(pt1), _mm256_load_ps(pt2));
 			sum_vec = zq_mm256_fmadd_ps(_mm256_load_ps(pt1 + 8), _mm256_load_ps(pt2 + 8), sum_vec);
 			sum_vec = zq_mm256_fmadd_ps(_mm256_load_ps(pt1 + 16), _mm256_load_ps(pt2 + 16), sum_vec);
@@ -226,7 +231,7 @@ namespace ZQ
 			float score = q[0] + q[1] + q[2] + q[3] + q[4] + q[5] + q[6] + q[7];
 			return score;
 #elif ZQ_CNN_USE_SSETYPE >= ZQ_CNN_SSETYPE_SSE
-			_declspec(align(32)) float q[4];
+			ZQ_DECLSPEC_ALIGN32 float q[4];
 			__m128 sum_vec = _mm_mul_ps(_mm_load_ps(pt1), _mm_load_ps(pt2));
 			sum_vec = zq_mm_fmadd_ps(_mm_load_ps(pt1 + 4), _mm_load_ps(pt2 + 4), sum_vec);
 			sum_vec = zq_mm_fmadd_ps(_mm_load_ps(pt1 + 8), _mm_load_ps(pt2 + 8), sum_vec);
@@ -273,7 +278,7 @@ namespace ZQ
 		static float _cal_similarity_avx_dim256(const float* pt1, const float* pt2)
 		{
 #if ZQ_CNN_USE_SSETYPE >= ZQ_CNN_SSETYPE_AVX
-			_declspec(align(32)) float q[8];
+			ZQ_DECLSPEC_ALIGN32 float q[8];
 			__m256 sum_vec = _mm256_mul_ps(_mm256_load_ps(pt1), _mm256_load_ps(pt2));
 			sum_vec = zq_mm256_fmadd_ps(_mm256_load_ps(pt1 + 8), _mm256_load_ps(pt2 + 8), sum_vec);
 			sum_vec = zq_mm256_fmadd_ps(_mm256_load_ps(pt1 + 16), _mm256_load_ps(pt2 + 16), sum_vec);
@@ -310,7 +315,7 @@ namespace ZQ
 			float score = q[0] + q[1] + q[2] + q[3] + q[4] + q[5] + q[6] + q[7]; 
 			return score;
 #elif ZQ_CNN_USE_SSETYPE >= ZQ_CNN_SSETYPE_SSE
-			_declspec(align(32)) float q[4];
+			ZQ_DECLSPEC_ALIGN32 float q[4];
 			__m128 sum_vec = _mm_mul_ps(_mm_load_ps(pt1), _mm_load_ps(pt2));
 			sum_vec = zq_mm_fmadd_ps(_mm_load_ps(pt1 + 4), _mm_load_ps(pt2 + 4), sum_vec);
 			sum_vec = zq_mm_fmadd_ps(_mm_load_ps(pt1 + 8), _mm_load_ps(pt2 + 8), sum_vec);
@@ -389,7 +394,7 @@ namespace ZQ
 		static float _cal_similarity_avx_dim512(const float* pt1, const float* pt2)
 		{
 #if ZQ_CNN_USE_SSETYPE >= ZQ_CNN_SSETYPE_AVX
-			_declspec(align(32)) float q[8];
+			ZQ_DECLSPEC_ALIGN32 float q[8];
 			__m256 sum_vec = _mm256_mul_ps(_mm256_load_ps(pt1), _mm256_load_ps(pt2));
 			sum_vec = zq_mm256_fmadd_ps(_mm256_load_ps(pt1 + 8), _mm256_load_ps(pt2 + 8), sum_vec);
 			sum_vec = zq_mm256_fmadd_ps(_mm256_load_ps(pt1 + 16), _mm256_load_ps(pt2 + 16), sum_vec);
@@ -458,7 +463,7 @@ namespace ZQ
 			float score = q[0] + q[1] + q[2] + q[3] + q[4] + q[5] + q[6] + q[7];
 			return score;
 #elif ZQ_CNN_USE_SSETYPE >= ZQ_CNN_SSETYPE_SSE
-			_declspec(align(32)) float q[4];
+			ZQ_DECLSPEC_ALIGN32 float q[4];
 			__m128 sum_vec = _mm_mul_ps(_mm_load_ps(pt1), _mm_load_ps(pt2));
 			sum_vec = zq_mm_fmadd_ps(_mm_load_ps(pt1 + 4), _mm_load_ps(pt2 + 4), sum_vec);
 			sum_vec = zq_mm_fmadd_ps(_mm_load_ps(pt1 + 8), _mm_load_ps(pt2 + 8), sum_vec);

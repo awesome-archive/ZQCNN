@@ -1,9 +1,11 @@
 
 include_directories(${ZQCNN_INCLUDE_DIRS})
 link_directories(${ZQCNN_LIBRARY_DIR})
+
 file(GLOB ZQCNN_SRC ${CMAKE_CURRENT_LIST_DIR}/*.cpp
                     ${CMAKE_CURRENT_LIST_DIR}/math/*.c
-                    ${CMAKE_CURRENT_LIST_DIR}/layers_c/*.c)
+                    ${CMAKE_CURRENT_LIST_DIR}/layers_c/*.c
+                    ${CMAKE_CURRENT_LIST_DIR}/layers_nchwc/*.c)
 
 add_library(ZQCNN ${ZQCNN_SRC})
 

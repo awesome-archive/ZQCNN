@@ -1,10 +1,11 @@
-#ifndef _ZQ_CNN_BBOX_UTILS_H_
+﻿#ifndef _ZQ_CNN_BBOX_UTILS_H_
 #define _ZQ_CNN_BBOX_UTILS_H_
 #pragma once
 
 #include "ZQ_CNN_BBox.h"
 #include <string>
 #include <math.h>
+#include <stdlib.h>
 #include <algorithm>
 
 namespace ZQ
@@ -50,7 +51,7 @@ namespace ZQ
 				heros.push_back(order);
 				int cur_overlap = 0;
 				boundingBox[order].exist = false;//delete it
-				int box_num = boundingBox.size();
+				int box_num = (int)boundingBox.size();
 				if (thread_num == 1)
 				{
 					for (int num = 0; num < box_num; num++)
@@ -58,10 +59,10 @@ namespace ZQ
 						if (boundingBox[num].exist)
 						{
 							//the iou
-							maxY = __max(boundingBox[num].row1, boundingBox[order].row1);
-							maxX = __max(boundingBox[num].col1, boundingBox[order].col1);
-							minY = __min(boundingBox[num].row2, boundingBox[order].row2);
-							minX = __min(boundingBox[num].col2, boundingBox[order].col2);
+							maxY = (float)__max(boundingBox[num].row1, boundingBox[order].row1);
+							maxX = (float)__max(boundingBox[num].col1, boundingBox[order].col1);
+							minY = (float)__min(boundingBox[num].row2, boundingBox[order].row2);
+							minX = (float)__min(boundingBox[num].col2, boundingBox[order].col2);
 							//maxX1 and maxY1 reuse 
 							maxX = __max(minX - maxX + 1, 0);
 							maxY = __max(minY - maxY + 1, 0);
@@ -93,17 +94,17 @@ namespace ZQ
 				}
 				else
 				{
-					int chunk_size = ceil(box_num / thread_num);
+					int chunk_size = (int)ceil(box_num / thread_num);
 #pragma omp parallel for schedule(static, chunk_size) num_threads(thread_num)
 					for (int num = 0; num < box_num; num++)
 					{
 						if (boundingBox.at(num).exist)
 						{
 							//the iou
-							maxY = __max(boundingBox[num].row1, boundingBox[order].row1);
-							maxX = __max(boundingBox[num].col1, boundingBox[order].col1);
-							minY = __min(boundingBox[num].row2, boundingBox[order].row2);
-							minX = __min(boundingBox[num].col2, boundingBox[order].col2);
+							maxY = (float)__max(boundingBox[num].row1, boundingBox[order].row1);
+							maxX = (float)__max(boundingBox[num].col1, boundingBox[order].col1);
+							minY = (float)__min(boundingBox[num].row2, boundingBox[order].row2);
+							minX = (float)__min(boundingBox[num].col2, boundingBox[order].col2);
 							//maxX1 and maxY1 reuse 
 							maxX = __max(minX - maxX + 1, 0);
 							maxY = __max(minY - maxY + 1, 0);
@@ -135,14 +136,14 @@ namespace ZQ
 				}
 				overlap_num.push_back(cur_overlap);
 			}
-			for (int i = 0; i < heros.size(); i++)
+			for (int i = 0; i < (int)heros.size(); i++)
 			{
 				if(!boundingBox[heros[i]].need_check_overlap_count 
 					|| overlap_num[i] >= overlap_count_thresh)
 					boundingBox[heros[i]].exist = true;
 			}
 			//clear exist= false;
-			for (int i = boundingBox.size() - 1; i >= 0; i--)
+			for (int i = (int)(boundingBox.size() - 1); i >= 0; i--)
 			{
 				if (!boundingBox[i].exist)
 				{
@@ -161,8 +162,8 @@ namespace ZQ
 			{
 				if ((*it).exist)
 				{
-					bbh = (*it).row2 - (*it).row1 + 1;
-					bbw = (*it).col2 - (*it).col1 + 1;
+					bbh = (float)((*it).row2 - (*it).row1 + 1);
+					bbw = (float)((*it).col2 - (*it).col1 + 1);
 					y1 = (*it).row1 + (*it).regreCoord[1] * bbh;
 					x1 = (*it).col1 + (*it).regreCoord[0] * bbw;
 					y2 = (*it).row2 + (*it).regreCoord[3] * bbh;
@@ -172,20 +173,22 @@ namespace ZQ
 					h = y2 - y1 + 1;
 					if (square)
 					{
-						bboxSize = (h > w) ? h : w;
-						y1 = y1 + h*0.5 - bboxSize*0.5;
-						x1 = x1 + w*0.5 - bboxSize*0.5;
-						(*it).row2 = round(y1 + bboxSize - 1);
-						(*it).col2 = round(x1 + bboxSize - 1);
-						(*it).row1 = round(y1);
-						(*it).col1 = round(x1);
+						float scale_h = h*it->scale_y;
+						float scale_w = w*it->scale_x;
+						bboxSize = (scale_h > scale_w) ? scale_h : scale_w;
+						y1 = y1 + h*0.5f - bboxSize/it->scale_y*0.5f;
+						x1 = x1 + w*0.5f - bboxSize/it->scale_x*0.5f;
+						(*it).row2 = (int)round(y1 + bboxSize / it->scale_y - 1);
+						(*it).col2 = (int)round(x1 + bboxSize / it->scale_x - 1);
+						(*it).row1 = (int)round(y1);
+						(*it).col1 = (int)round(x1);
 					}
 					else
 					{
-						(*it).row2 = round(y1 + h - 1);
-						(*it).col2 = round(x1 + w - 1);
-						(*it).row1 = round(y1);
-						(*it).col1 = round(x1);
+						(*it).row2 = (int)round(y1 + h - 1);
+						(*it).col2 = (int)round(x1 + w - 1);
+						(*it).row1 = (int)round(y1);
+						(*it).col1 = (int)round(x1);
 					}
 
 					//boundary check
@@ -194,7 +197,7 @@ namespace ZQ
 					if ((*it).row2 > height)(*it).row2 = height - 1;
 					if ((*it).col2 > width)(*it).col2 = width - 1;*/
 
-					it->area = (it->row2 - it->row1)*(it->col2 - it->col1);
+					it->area = (float)(it->row2 - it->row1)*(it->col2 - it->col1);
 				}
 			}
 		}
@@ -208,17 +211,19 @@ namespace ZQ
 			{
 				if ((*it).exist)
 				{
-					y1 = (*it).row1;
-					x1 = (*it).col1;
-					h = (*it).row2 - (*it).row1 + 1;
-					w = (*it).col2 - (*it).col1 + 1;
-					bboxSize = (h > w) ? h : w;
-					y1 = y1 + h*0.5 - bboxSize*0.5;
-					x1 = x1 + w*0.5 - bboxSize*0.5;
-					(*it).row2 = round(y1 + bboxSize - 1);
-					(*it).col2 = round(x1 + bboxSize - 1);
-					(*it).row1 = round(y1);
-					(*it).col1 = round(x1);
+					h = (float)((*it).row2 - (*it).row1 + 1);
+					w = (float)((*it).col2 - (*it).col1 + 1);
+					y1 = (float)(*it).row1;
+					x1 = (float)(*it).col1;
+					float scale_h = h*it->scale_y;
+					float scale_w = w*it->scale_x;
+					bboxSize = (scale_h > scale_w) ? scale_h : scale_w;
+					y1 = y1 + h*0.5f - bboxSize / it->scale_y*0.5f;
+					x1 = x1 + w*0.5f - bboxSize / it->scale_x*0.5f;
+					(*it).row2 = (int)round(y1 + bboxSize / it->scale_y - 1);
+					(*it).col2 = (int)round(x1 + bboxSize / it->scale_x - 1);
+					(*it).row1 = (int)round(y1);
+					(*it).col1 = (int)round(x1);
 
 					//boundary check
 					/*if ((*it).row1 < 0)(*it).row1 = 0;
@@ -226,7 +231,41 @@ namespace ZQ
 					if ((*it).row2 > height)(*it).row2 = height - 1;
 					if ((*it).col2 > width)(*it).col2 = width - 1;*/
 
-					it->area = (it->row2 - it->row1)*(it->col2 - it->col1);
+					it->area = (float)(it->row2 - it->row1)*(it->col2 - it->col1);
+				}
+			}
+		}
+
+		static void _square_bbox(std::vector<ZQ_CNN_BBox106> &vecBbox, const int width, const int height)
+		{
+			float bbw = 0, bbh = 0, bboxSize = 0;
+			float h = 0, w = 0;
+			float x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+			for (std::vector<ZQ_CNN_BBox106>::iterator it = vecBbox.begin(); it != vecBbox.end(); it++)
+			{
+				if ((*it).exist)
+				{
+					h = (float)((*it).row2 - (*it).row1 + 1);
+					w = (float)((*it).col2 - (*it).col1 + 1);
+					y1 = (float)(*it).row1;
+					x1 = (float)(*it).col1;
+					float scale_h = h*it->scale_y;
+					float scale_w = w*it->scale_x;
+					bboxSize = (scale_h > scale_w) ? scale_h : scale_w;
+					y1 = y1 + h*0.5f - bboxSize / it->scale_y*0.5f;
+					x1 = x1 + w*0.5f - bboxSize / it->scale_x*0.5f;
+					(*it).row2 = (int)round(y1 + bboxSize / it->scale_y - 1);
+					(*it).col2 = (int)round(x1 + bboxSize / it->scale_x - 1);
+					(*it).row1 = (int)round(y1);
+					(*it).col1 = (int)round(x1);
+
+					//boundary check
+					/*if ((*it).row1 < 0)(*it).row1 = 0;
+					if ((*it).col1 < 0)(*it).col1 = 0;
+					if ((*it).row2 > height)(*it).row2 = height - 1;
+					if ((*it).col2 > width)(*it).col2 = width - 1;*/
+
+					it->area = (float)(it->row2 - it->row1)*(it->col2 - it->col1);
 				}
 			}
 		}
@@ -279,7 +318,7 @@ namespace ZQ
 				return false;
 			if (prior_bboxes.size() != bboxes.size())
 				return false;
-			int num_bboxes = prior_bboxes.size();
+			int num_bboxes = (int)prior_bboxes.size();
 			if (num_bboxes >= 1) 
 			{
 				if (prior_variances[0].size() != 4)
@@ -337,8 +376,8 @@ namespace ZQ
 					//return false;
 					printf("y = [%f , %f]\n", prior_bbox.row1, prior_bbox.row2);
 				}
-				float prior_center_x = (prior_bbox.col1 + prior_bbox.col2) / 2.;
-				float prior_center_y = (prior_bbox.row1 + prior_bbox.row2) / 2.;
+				float prior_center_x = (prior_bbox.col1 + prior_bbox.col2) / 2.f;
+				float prior_center_y = (prior_bbox.row1 + prior_bbox.row2) / 2.f;
 
 				float decode_bbox_center_x, decode_bbox_center_y;
 				float decode_bbox_width, decode_bbox_height;
@@ -360,10 +399,10 @@ namespace ZQ
 					decode_bbox_height = exp(prior_variance[3] * bbox.row2) * prior_height;
 				}
 
-				decode_bbox->col1 = decode_bbox_center_x - decode_bbox_width / 2.;
-				decode_bbox->row1 = decode_bbox_center_y - decode_bbox_height / 2.;
-				decode_bbox->col2 = decode_bbox_center_x + decode_bbox_width / 2.;
-				decode_bbox->row2 = decode_bbox_center_y + decode_bbox_height / 2.;
+				decode_bbox->col1 = decode_bbox_center_x - decode_bbox_width / 2.f;
+				decode_bbox->row1 = decode_bbox_center_y - decode_bbox_height / 2.f;
+				decode_bbox->col2 = decode_bbox_center_x + decode_bbox_width / 2.f;
+				decode_bbox->row2 = decode_bbox_center_y + decode_bbox_height / 2.f;
 			}
 			else if (code_type == PriorBoxCodeType_CORNER_SIZE) 
 			{
@@ -438,10 +477,10 @@ namespace ZQ
 
 		static void ClipBBox(const ZQ_CNN_NormalizedBBox& bbox, ZQ_CNN_NormalizedBBox* clip_bbox) 
 		{
-			clip_bbox->col1 = std::max(std::min(bbox.col1, 1.f), 0.f);
-			clip_bbox->row1 = std::max(std::min(bbox.row1, 1.f), 0.f);
-			clip_bbox->col2 = std::max(std::min(bbox.col2, 1.f), 0.f);
-			clip_bbox->row2 = std::max(std::min(bbox.row2, 1.f), 0.f);
+			clip_bbox->col1 = __max(__min(bbox.col1, 1.f), 0.f);
+			clip_bbox->row1 = __max(__min(bbox.row1, 1.f), 0.f);
+			clip_bbox->col2 = __max(__min(bbox.col2, 1.f), 0.f);
+			clip_bbox->row2 = __max(__min(bbox.row2, 1.f), 0.f);
 			clip_bbox->size = BBoxSize(*clip_bbox, true);
 			clip_bbox->difficult = bbox.difficult;
 		}
@@ -711,10 +750,10 @@ namespace ZQ
 			}
 			else 
 			{
-				intersect_bbox->col1 = std::max(bbox1.col1, bbox2.col1);
-				intersect_bbox->row1 = std::max(bbox1.row1, bbox2.row1);
-				intersect_bbox->col2 = std::min(bbox1.col2, bbox2.col2);
-				intersect_bbox->row2 = std::min(bbox1.row2, bbox2.row2);
+				intersect_bbox->col1 = __max(bbox1.col1, bbox2.col1);
+				intersect_bbox->row1 = __max(bbox1.row1, bbox2.row1);
+				intersect_bbox->col2 = __min(bbox1.col2, bbox2.col2);
+				intersect_bbox->row2 = __min(bbox1.row2, bbox2.row2);
 			}
 		}
 	};

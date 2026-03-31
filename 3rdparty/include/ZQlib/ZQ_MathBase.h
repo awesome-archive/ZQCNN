@@ -783,7 +783,7 @@ namespace ZQ
 			int pp = p-1;
 			int iter = 0;
 			//double eps = pow( 2.0, -52.0 );
-			T eps = pow(2.0, -52.0);
+			T eps = pow(2.0, -30.0);
 
 			while( p > 0 )
 			{
@@ -1119,7 +1119,7 @@ namespace ZQ
 		is_singular = false;
 		succ = false;
 		
-		if (_strcmpi(typeid(T).name(), "double") == 0)
+		if (strcmp(typeid(T).name(), "double") == 0)
 		{
 			double* U = (double*)malloc(sizeof(double)*row*row);
 			double* S = (double*)malloc(sizeof(double)*row*col);
@@ -1186,7 +1186,5 @@ namespace ZQ
 	}
 
 }
-
-
 
 #endif
